@@ -1,4 +1,4 @@
-name: Java-SDK GitHub Actions
+name: ABICodeGenerator GitHub Actions
 on:
   pull_request:
   release:
@@ -13,8 +13,8 @@ jobs:
     container:
       image: docker.io/ubuntu:18.04
       volumes:
-        - /__w/java-sdk:/__w/java-sdk
-        - /__w/java-sdk/java-sdk:/__w/java-sdk/java-sdk
+        - /__w/code-gen:/__w/code-gen
+        - /__w/code-gen/code-gen:/__w/code-gen/code-gen
     steps:
       - uses: actions/checkout@v2
         with:
@@ -44,8 +44,8 @@ jobs:
     container:
       image: docker.io/ubuntu:20.04
       volumes:
-        - /__w/java-sdk:/__w/java-sdk
-        - /__w/java-sdk/java-sdk:/__w/java-sdk/java-sdk
+        - /__w/code-gen:/__w/code-gen
+        - /__w/code-gen/code-gen:/__w/code-gen/code-gen
     steps:
       - uses: actions/checkout@v2
         with:

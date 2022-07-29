@@ -1,17 +1,4 @@
-/**
- * Copyright 2014-2020 [fisco-dev]
- *
- * <p>Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
- * except in compliance with the License. You may obtain a copy of the License at
- *
- * <p>http://www.apache.org/licenses/LICENSE-2.0
- *
- * <p>Unless required by applicable law or agreed to in writing, software distributed under the
- * License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing permissions and
- * limitations under the License.
- */
-package org.fisco.bcos.codegen.v2.wrapper;
+package org.fisco.bcos.codegen.v3.wrapper;
 
 import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.ClassName;
@@ -41,58 +28,56 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Modifier;
-
-import org.fisco.bcos.codegen.v2.utils.CodeGenUtils;
-import org.fisco.bcos.codegen.v2.exceptions.CodeGenException;
-import org.fisco.bcos.sdk.abi.FunctionEncoder;
-import org.fisco.bcos.sdk.abi.FunctionReturnDecoder;
-import org.fisco.bcos.sdk.abi.TypeReference;
-import org.fisco.bcos.sdk.abi.datatypes.Address;
-import org.fisco.bcos.sdk.abi.datatypes.Bool;
-import org.fisco.bcos.sdk.abi.datatypes.DynamicArray;
-import org.fisco.bcos.sdk.abi.datatypes.DynamicBytes;
-import org.fisco.bcos.sdk.abi.datatypes.DynamicStruct;
-import org.fisco.bcos.sdk.abi.datatypes.Event;
-import org.fisco.bcos.sdk.abi.datatypes.Function;
-import org.fisco.bcos.sdk.abi.datatypes.StaticArray;
-import org.fisco.bcos.sdk.abi.datatypes.StaticStruct;
-import org.fisco.bcos.sdk.abi.datatypes.Type;
-import org.fisco.bcos.sdk.abi.datatypes.Utf8String;
-import org.fisco.bcos.sdk.abi.datatypes.generated.AbiTypes;
-import org.fisco.bcos.sdk.abi.wrapper.ABIDefinition;
-import org.fisco.bcos.sdk.client.Client;
-import org.fisco.bcos.sdk.contract.Contract;
-import org.fisco.bcos.sdk.crypto.CryptoSuite;
-import org.fisco.bcos.sdk.crypto.keypair.CryptoKeyPair;
-import org.fisco.bcos.sdk.eventsub.EventCallback;
-import org.fisco.bcos.sdk.model.CryptoType;
-import org.fisco.bcos.sdk.model.TransactionReceipt;
-import org.fisco.bcos.sdk.model.callback.TransactionCallback;
-import org.fisco.bcos.sdk.transaction.model.exception.ContractException;
-import org.fisco.bcos.sdk.utils.Collection;
-import org.fisco.bcos.sdk.utils.StringUtils;
+import org.fisco.bcos.codegen.v3.utils.CodeGenUtils;
+import org.fisco.bcos.sdk.v3.client.Client;
+import org.fisco.bcos.sdk.v3.client.protocol.model.TransactionAttribute;
+import org.fisco.bcos.sdk.v3.codec.datatypes.Address;
+import org.fisco.bcos.sdk.v3.codec.datatypes.Bool;
+import org.fisco.bcos.sdk.v3.codec.datatypes.DynamicArray;
+import org.fisco.bcos.sdk.v3.codec.datatypes.DynamicBytes;
+import org.fisco.bcos.sdk.v3.codec.datatypes.DynamicStruct;
+import org.fisco.bcos.sdk.v3.codec.datatypes.Event;
+import org.fisco.bcos.sdk.v3.codec.datatypes.Function;
+import org.fisco.bcos.sdk.v3.codec.datatypes.StaticArray;
+import org.fisco.bcos.sdk.v3.codec.datatypes.StaticStruct;
+import org.fisco.bcos.sdk.v3.codec.datatypes.Type;
+import org.fisco.bcos.sdk.v3.codec.datatypes.TypeReference;
+import org.fisco.bcos.sdk.v3.codec.datatypes.Utf8String;
+import org.fisco.bcos.sdk.v3.codec.wrapper.ABIDefinition;
+import org.fisco.bcos.sdk.v3.contract.Contract;
+import org.fisco.bcos.sdk.v3.crypto.CryptoSuite;
+import org.fisco.bcos.sdk.v3.crypto.keypair.CryptoKeyPair;
+import org.fisco.bcos.sdk.v3.eventsub.EventSubCallback;
+import org.fisco.bcos.sdk.v3.model.CryptoType;
+import org.fisco.bcos.sdk.v3.model.TransactionReceipt;
+import org.fisco.bcos.sdk.v3.model.callback.TransactionCallback;
+import org.fisco.bcos.sdk.v3.transaction.model.exception.ContractException;
+import org.fisco.bcos.sdk.v3.utils.Collection;
+import org.fisco.bcos.sdk.v3.utils.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Generate Java Classes based on generated Solidity bin and abi files. */
-public class SolidityContractWrapper {
+public class ContractWrapper {
 
-    private static final Logger logger = LoggerFactory.getLogger(SolidityContractWrapper.class);
+    private static final Logger logger = LoggerFactory.getLogger(ContractWrapper.class);
 
-    private static final int maxSolidityBinSize = 0x40000;
-    private static final int maxField = 8 * 1024;
+    private static final int MAX_BIN_SIZE = 0x40000;
+    private static final int MAX_FIELD = 8 * 1024;
 
-    private static String BINARY_ARRAY_NAME = "BINARY_ARRAY";
-    private static String SM_BINARY_ARRAY_NAME = "SM_BINARY_ARRAY";
+    private static final String BINARY_ARRAY_NAME = "BINARY_ARRAY";
+    private static final String SM_BINARY_ARRAY_NAME = "SM_BINARY_ARRAY";
     private static final String BINARY_NAME = "BINARY";
     private static final String SM_BINARY_NAME = "SM_BINARY";
     private static final String ABI_ARRAY_NAME = "ABI_ARRAY";
     private static final String ABI_NAME = "ABI";
 
     private static final String GET_BINARY_FUNC = "getBinary";
+    private static final String GET_ABI_FUNC = "getABI";
     private static final String CLIENT = "client";
+    private static final String PATH = "contractPath";
     private static final String CREDENTIAL = "credential";
-    private static final String CRYPTOSUITE = "cryptoSuite";
+    private static final String CRYPTO_SUITE = "cryptoSuite";
     private static final String CONTRACT_ADDRESS = "contractAddress";
     private static final String FROM_BLOCK = "fromBlock";
     private static final String TO_BLOCK = "toBlock";
@@ -101,14 +86,19 @@ public class SolidityContractWrapper {
     private static final String FUNC_NAME_PREFIX = "FUNC_";
     private static final String EVENT_ENCODER = "eventEncoder";
 
-    private static final String regex = "(\\w+)(?:\\[(.*?)\\])(?:\\[(.*?)\\])?";
-    private static final Pattern pattern = Pattern.compile(regex);
+    private static final String TUPLE_REGEX = "tuple\\.Tuple(\\d+)";
+    private static final Pattern TUPLE_PATTERN = Pattern.compile(TUPLE_REGEX);
 
     private static final String TUPLE_PACKAGE_NAME =
-            "org.fisco.bcos.sdk.codec.datatypes.generated.tuples.generated";
+            "org.fisco.bcos.sdk.v3.codec.datatypes.generated.tuples.generated";
 
+    private final boolean isWasm;
     private static final HashMap<Integer, TypeName> structClassNameMap = new HashMap<>();
     private static final List<ABIDefinition.NamedType> structsNamedTypeList = new ArrayList<>();
+
+    public ContractWrapper(boolean isWasm) {
+        this.isWasm = isWasm;
+    }
 
     public void generateJavaFiles(
             String contractName,
@@ -117,53 +107,50 @@ public class SolidityContractWrapper {
             String abi,
             String destinationDir,
             String basePackageName)
-            throws IOException, ClassNotFoundException, UnsupportedOperationException,
-                    CodeGenException {
-        String className = StringUtils.capitaliseFirstLetter(contractName);
+            throws IOException, ClassNotFoundException, UnsupportedOperationException {
+        String[] nameParts = contractName.split("_");
+        for (int i = 0; i < nameParts.length; ++i) {
+            nameParts[i] = StringUtils.capitaliseFirstLetter(nameParts[i]);
+        }
+        String className = String.join("", nameParts);
 
         logger.info("bin: {}", bin);
         logger.info("smBin: {}", smBin);
 
-        if (bin.length() > maxSolidityBinSize) {
+        if (bin.length() > MAX_BIN_SIZE) {
             throw new UnsupportedOperationException(
-                    " contract binary too long, max support is 256k, now is "
-                            + Integer.valueOf(bin.length()));
+                    String.format(
+                            "Contract binary too long, max support is %d bytes, now is %d",
+                            MAX_BIN_SIZE, bin.length()));
         }
 
         List<ABIDefinition> abiDefinitions = CodeGenUtils.loadContractAbiDefinition(abi);
-        TypeSpec.Builder classBuilder = createClassBuilder(className, bin, smBin, abi);
+        TypeSpec.Builder classBuilder = this.createClassBuilder(className, bin, smBin, abi);
 
-        classBuilder.addMethod(
-                buildGetBinaryMethod(CryptoSuite.class, CryptoType.class, CRYPTOSUITE));
-        classBuilder.addMethod(buildConstructor(CryptoKeyPair.class, CREDENTIAL));
+        classBuilder.addMethod(buildGetBinaryMethod());
+        classBuilder.addMethod(buildGetABIMethod());
+        classBuilder.addMethod(buildConstructor());
 
-        classBuilder.addFields(buildFuncNameConstants(abiDefinitions));
+        classBuilder.addFields(this.buildFuncNameConstants(abiDefinitions));
         classBuilder.addTypes(this.buildStructTypes(abiDefinitions));
         structsNamedTypeList.addAll(
                 abiDefinitions.stream()
                         .flatMap(
                                 definition -> {
                                     List<ABIDefinition.NamedType> parameters = new ArrayList<>();
-                                    if (definition.getInputs() != null) {
-                                        parameters.addAll(definition.getInputs());
-                                    }
-
-                                    if (definition.getOutputs() != null) {
-                                        parameters.addAll(definition.getOutputs());
-                                    }
+                                    parameters.addAll(definition.getInputs());
+                                    parameters.addAll(definition.getOutputs());
                                     return parameters.stream()
                                             .filter(
                                                     namedType ->
-                                                            namedType
-                                                                    .getType()
-                                                                    .startsWith("tuple"));
+                                                            namedType.getType().equals("tuple"));
                                 })
                         .collect(Collectors.toList()));
-        classBuilder.addMethods(buildFunctionDefinitions(classBuilder, abiDefinitions));
-        classBuilder.addMethod(buildLoad(className, CryptoKeyPair.class, CREDENTIAL));
-        classBuilder.addMethods(buildDeployMethods(className, abiDefinitions));
+        classBuilder.addMethods(this.buildFunctionDefinitions(classBuilder, abiDefinitions));
+        classBuilder.addMethod(buildLoad(className));
+        classBuilder.addMethods(this.buildDeployMethods(isWasm, className, abiDefinitions));
 
-        write(basePackageName, classBuilder.build(), destinationDir);
+        this.write(basePackageName, classBuilder.build(), destinationDir);
     }
 
     protected void write(String packageName, TypeSpec typeSpec, String destinationDir)
@@ -179,35 +166,32 @@ public class SolidityContractWrapper {
 
     private TypeSpec.Builder createClassBuilder(
             String className, String binary, String smBinary, String abi) {
-        TypeSpec.Builder builder =
-                TypeSpec.classBuilder(className)
-                        .addModifiers(Modifier.PUBLIC)
-                        .superclass(Contract.class)
-                        .addAnnotation(
-                                AnnotationSpec.builder(SuppressWarnings.class)
-                                        .addMember("value", "$S", "unchecked")
-                                        .build())
-                        // binary fields
-                        .addField(createArrayDefinition(BINARY_ARRAY_NAME, binary))
-                        .addField(createDefinition(BINARY_NAME, BINARY_ARRAY_NAME))
-                        .addField(createArrayDefinition(SM_BINARY_ARRAY_NAME, smBinary))
-                        .addField(createDefinition(SM_BINARY_NAME, SM_BINARY_ARRAY_NAME))
-                        // abi fields
-                        .addField(createArrayDefinition(ABI_ARRAY_NAME, abi))
-                        .addField(createDefinition(ABI_NAME, ABI_ARRAY_NAME));
-
-        return builder;
+        return TypeSpec.classBuilder(className)
+                .addModifiers(Modifier.PUBLIC)
+                .superclass(Contract.class)
+                .addAnnotation(
+                        AnnotationSpec.builder(SuppressWarnings.class)
+                                .addMember("value", "$S", "unchecked")
+                                .build())
+                // binary fields
+                .addField(this.createArrayDefinition(BINARY_ARRAY_NAME, binary))
+                .addField(this.createDefinition(BINARY_NAME, BINARY_ARRAY_NAME))
+                .addField(this.createArrayDefinition(SM_BINARY_ARRAY_NAME, smBinary))
+                .addField(this.createDefinition(SM_BINARY_NAME, SM_BINARY_ARRAY_NAME))
+                // abi fields
+                .addField(this.createArrayDefinition(ABI_ARRAY_NAME, abi))
+                .addField(this.createDefinition(ABI_NAME, ABI_ARRAY_NAME));
     }
 
     public List<String> stringToArrayString(String binary) {
 
-        List<String> binaryArray = new ArrayList<String>();
+        List<String> binaryArray = new ArrayList<>();
 
         for (int offset = 0; offset < binary.length(); ) {
 
             int length = binary.length() - offset;
-            if (length > maxField) {
-                length = maxField;
+            if (length > MAX_FIELD) {
+                length = MAX_FIELD;
             }
 
             String item = binary.substring(offset, offset + length);
@@ -220,24 +204,22 @@ public class SolidityContractWrapper {
     }
 
     private FieldSpec createArrayDefinition(String type, String binary) {
-        List<String> binaryArray = stringToArrayString(binary);
-        List<String> formatArray =
-                new ArrayList<String>(Collections.nCopies(binaryArray.size(), "$S"));
+        List<String> binaryArray = this.stringToArrayString(binary);
+        List<String> formatArray = new ArrayList<>(Collections.nCopies(binaryArray.size(), "$S"));
 
         return FieldSpec.builder(String[].class, type)
                 .addModifiers(Modifier.PUBLIC, Modifier.FINAL, Modifier.STATIC)
                 .initializer(
-                        "{" + org.fisco.bcos.sdk.utils.StringUtils.joinAll(",", formatArray) + "}",
-                        binaryArray.toArray())
+                        "{" + StringUtils.joinAll(",", formatArray) + "}", binaryArray.toArray())
                 .build();
     }
 
-    private FieldSpec createDefinition(String type, String binayArrayName) {
+    private FieldSpec createDefinition(String type, String binaryArrayName) {
         return FieldSpec.builder(String.class, type)
                 .addModifiers(Modifier.PUBLIC, Modifier.FINAL, Modifier.STATIC)
                 .initializer(
-                        "org.fisco.bcos.sdk.utils.StringUtils.joinAll(\"\", "
-                                + binayArrayName
+                        "org.fisco.bcos.sdk.v3.utils.StringUtils.joinAll(\"\", "
+                                + binaryArrayName
                                 + ")")
                 .build();
     }
@@ -246,7 +228,7 @@ public class SolidityContractWrapper {
 
         CodeBlock initializer = buildVariableLengthEventInitializer(name, parameters);
 
-        return FieldSpec.builder(Event.class, buildEventDefinitionName(name))
+        return FieldSpec.builder(Event.class, this.buildEventDefinitionName(name))
                 .addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
                 .initializer(initializer)
                 .build();
@@ -274,59 +256,278 @@ public class SolidityContractWrapper {
     private List<MethodSpec> buildFunctionDefinitions(
             TypeSpec.Builder classBuilder, List<ABIDefinition> functionDefinitions)
             throws ClassNotFoundException {
-
         List<MethodSpec> methodSpecs = new ArrayList<>();
         for (ABIDefinition functionDefinition : functionDefinitions) {
             if (functionDefinition.getType().equals("function")) {
-                MethodSpec ms = buildFunction(functionDefinition);
+                MethodSpec ms = this.buildFunction(functionDefinition);
                 methodSpecs.add(ms);
 
                 if (!functionDefinition.isConstant()) {
-                    MethodSpec msCallback = buildFunctionWithCallback(functionDefinition);
+                    MethodSpec msCallback = this.buildFunctionWithCallback(functionDefinition);
                     methodSpecs.add(msCallback);
 
-                    MethodSpec msSeq = buildFunctionSignedTransaction(functionDefinition);
+                    MethodSpec msSeq = this.buildFunctionSignedTransaction(functionDefinition);
                     methodSpecs.add(msSeq);
 
                     boolean isOverLoad =
                             isOverLoadFunction(functionDefinition.getName(), functionDefinitions);
                     if (!functionDefinition.getInputs().isEmpty()) {
                         MethodSpec inputDecoder =
-                                buildFunctionWithInputDecoder(functionDefinition, isOverLoad);
+                                this.buildFunctionWithInputDecoder(functionDefinition, isOverLoad);
                         methodSpecs.add(inputDecoder);
                     }
 
                     if (!functionDefinition.getOutputs().isEmpty()) {
                         MethodSpec outputDecoder =
-                                buildFunctionWithOutputDecoder(functionDefinition, isOverLoad);
+                                this.buildFunctionWithOutputDecoder(functionDefinition, isOverLoad);
                         methodSpecs.add(outputDecoder);
                     }
                 }
             } else if (functionDefinition.getType().equals("event")) {
-                methodSpecs.addAll(buildEventFunctions(functionDefinition, classBuilder));
+                methodSpecs.addAll(this.buildEventFunctions(functionDefinition, classBuilder));
             }
         }
 
         return methodSpecs;
     }
 
+    private String buildStructConstructorParameterDefinition(
+            final List<ABIDefinition.NamedType> components, final boolean useNativeJavaTypes)
+            throws ClassNotFoundException {
+        final StringBuilder stringBuilder = new StringBuilder();
+        for (int i = 0; i < components.size(); i++) {
+            final ABIDefinition.NamedType component = components.get(i);
+            stringBuilder.append(i > 0 ? "," : "");
+            if (useNativeJavaTypes) {
+                stringBuilder.append(
+                        !component.getType().startsWith("tuple")
+                                ? "new "
+                                        + buildTypeName(component.getType())
+                                        + "("
+                                        + component.getName()
+                                        + ")"
+                                : component.getName());
+            } else {
+                stringBuilder.append(component.getName());
+            }
+        }
+        return stringBuilder.toString();
+    }
+
+    private List<TypeSpec> buildStructTypes(List<ABIDefinition> functionDefinitions)
+            throws ClassNotFoundException {
+        final List<ABIDefinition.NamedType> orderedKeys = extractStructs(functionDefinitions);
+        int structCounter = 0;
+        List<TypeSpec> structs = new ArrayList<>();
+        for (final ABIDefinition.NamedType namedType : orderedKeys) {
+            if (!isStructType(namedType)) {
+                List<TypeName> elementTypes = new ArrayList<>();
+                for (ABIDefinition.NamedType component : namedType.getComponents()) {
+                    final TypeName typeName;
+                    if (component.getType().equals("tuple")) {
+                        typeName = structClassNameMap.get(component.structIdentifier());
+                    } else if (component.getType().startsWith("tuple")
+                            && component.getType().contains("[")) {
+                        typeName = buildStructArrayTypeName(component);
+                    } else {
+                        typeName = getNativeType(buildTypeName(component.getType()));
+                    }
+                    elementTypes.add(typeName);
+
+                    ParameterizedTypeName parameterizedTupleType =
+                            ParameterizedTypeName.get(
+                                    ClassName.get(
+                                            TUPLE_PACKAGE_NAME, "Tuple" + elementTypes.size()),
+                                    elementTypes.toArray(new TypeName[0]));
+
+                    structClassNameMap.put(namedType.structIdentifier(), parameterizedTupleType);
+                }
+                continue;
+            }
+
+            String internalType = namedType.getInternalType();
+            final String structName;
+            if (internalType == null || internalType.isEmpty()) {
+                structName = "Struct" + structCounter;
+            } else {
+                if (namedType.getType().equals("tuple[]") && internalType.endsWith("[]")) {
+                    internalType = internalType.substring(0, internalType.lastIndexOf("["));
+                }
+                if (isWasm) {
+                    structName = internalType.substring(internalType.lastIndexOf(".") + 1);
+                } else {
+                    structName = internalType.substring(internalType.lastIndexOf(" ") + 1);
+                }
+            }
+
+            final TypeSpec.Builder builder =
+                    TypeSpec.classBuilder(structName)
+                            .addModifiers(Modifier.PUBLIC, Modifier.STATIC);
+
+            final MethodSpec.Builder constructorBuilder =
+                    MethodSpec.constructorBuilder()
+                            .addModifiers(Modifier.PUBLIC)
+                            .addStatement(
+                                    "super("
+                                            + buildStructConstructorParameterDefinition(
+                                                    namedType.getComponents(), false)
+                                            + ")");
+            final MethodSpec.Builder nativeConstructorBuilder =
+                    MethodSpec.constructorBuilder()
+                            .addModifiers(Modifier.PUBLIC)
+                            .addStatement(
+                                    "super("
+                                            + buildStructConstructorParameterDefinition(
+                                                    namedType.getComponents(), true)
+                                            + ")");
+
+            for (ABIDefinition.NamedType component : namedType.getComponents()) {
+                if (component.getType().equals("tuple")) {
+                    final TypeName typeName = structClassNameMap.get(component.structIdentifier());
+                    builder.addField(typeName, component.getName(), Modifier.PUBLIC);
+                    constructorBuilder.addParameter(typeName, component.getName());
+                    nativeConstructorBuilder.addParameter(typeName, component.getName());
+                } else if (component.getType().startsWith("tuple")
+                        && component.getType().endsWith("[]")) {
+                    final TypeName typeName = buildStructArrayTypeName(component);
+                    builder.addField(typeName, component.getName(), Modifier.PUBLIC);
+                    constructorBuilder.addParameter(typeName, component.getName());
+                    nativeConstructorBuilder.addParameter(typeName, component.getName());
+                } else {
+                    final TypeName typeName = buildTypeName(component.getType());
+                    final TypeName nativeTypeName = getNativeType(typeName);
+                    builder.addField(nativeTypeName, component.getName(), Modifier.PUBLIC);
+                    constructorBuilder.addParameter(typeName, component.getName());
+                    nativeConstructorBuilder.addParameter(nativeTypeName, component.getName());
+                }
+                nativeConstructorBuilder.addStatement(
+                        "this." + component.getName() + " = " + component.getName());
+                constructorBuilder.addStatement(
+                        "this."
+                                + component.getName()
+                                + " = "
+                                + component.getName()
+                                + (structClassNameMap.keySet().stream()
+                                                .noneMatch(i -> i == component.structIdentifier())
+                                        ? ".getValue()"
+                                        : ""));
+            }
+
+            builder.superclass(namedType.isDynamic() ? DynamicStruct.class : StaticStruct.class);
+            builder.addMethod(constructorBuilder.build());
+            if (!namedType.getComponents().isEmpty()
+                    && namedType.getComponents().stream()
+                            .anyMatch(
+                                    component ->
+                                            structClassNameMap.keySet().stream()
+                                                    .noneMatch(
+                                                            i ->
+                                                                    i
+                                                                            == component
+                                                                                    .structIdentifier()))) {
+                builder.addMethod(nativeConstructorBuilder.build());
+            }
+            structClassNameMap.put(namedType.structIdentifier(), ClassName.get("", structName));
+            structs.add(builder.build());
+            structCounter++;
+        }
+        return structs;
+    }
+
+    private boolean isStructType(ABIDefinition.NamedType namedType) {
+        if (isWasm) {
+            String internalType = namedType.getInternalType();
+            Matcher matcher = TUPLE_PATTERN.matcher(internalType);
+            if (matcher.find()) {
+                return false;
+            }
+        }
+        return namedType.getType().startsWith("tuple");
+    }
+
+    private List<ABIDefinition.NamedType> extractStructs(
+            final List<ABIDefinition> functionDefinitions) {
+        final HashMap<Integer, ABIDefinition.NamedType> structMap = new LinkedHashMap<>();
+        functionDefinitions.stream()
+                .flatMap(
+                        definition -> {
+                            List<ABIDefinition.NamedType> parameters =
+                                    new ArrayList<>(definition.getInputs());
+                            List<ABIDefinition.NamedType> outputs = definition.getOutputs();
+                            if (outputs != null) {
+                                parameters.addAll(definition.getOutputs());
+                            }
+                            return parameters.stream()
+                                    .map(this::normalizeNamedType)
+                                    .filter(namedType -> namedType.getType().startsWith("tuple"));
+                        })
+                .forEach(
+                        namedType -> {
+                            int structIdentifier = namedType.structIdentifier();
+                            if (!structMap.containsKey(structIdentifier)) {
+                                structMap.put(structIdentifier, namedType);
+                            }
+                            extractNested(namedType).stream()
+                                    .filter(this::isStructType)
+                                    .forEach(
+                                            nestedNamedType ->
+                                                    structMap.put(
+                                                            nestedNamedType.structIdentifier(),
+                                                            nestedNamedType));
+                        });
+
+        return structMap.values().stream()
+                .sorted(Comparator.comparingInt(ABIDefinition.NamedType::nestedness))
+                .collect(Collectors.toList());
+    }
+
+    private java.util.Collection<? extends ABIDefinition.NamedType> extractNested(
+            final ABIDefinition.NamedType namedType) {
+        if (namedType.getComponents().isEmpty()) {
+            return new ArrayList<>();
+        } else {
+            List<ABIDefinition.NamedType> nestedStructs = new ArrayList<>();
+            namedType
+                    .getComponents()
+                    .forEach(
+                            nestedNamedStruct -> {
+                                nestedStructs.add(nestedNamedStruct);
+                                nestedStructs.addAll(extractNested(nestedNamedStruct));
+                            });
+            return nestedStructs;
+        }
+    }
+
+    private ABIDefinition.NamedType normalizeNamedType(ABIDefinition.NamedType namedType) {
+        if (namedType.getType().endsWith("[]") && namedType.getInternalType().endsWith("[]")) {
+            return new ABIDefinition.NamedType(
+                    namedType.getName(),
+                    namedType.getType().substring(0, namedType.getType().length() - 2),
+                    namedType
+                            .getInternalType()
+                            .substring(0, namedType.getInternalType().length() - 2),
+                    namedType.isIndexed(),
+                    namedType.getComponents());
+        } else {
+            return namedType;
+        }
+    }
+
     private List<MethodSpec> buildDeployMethods(
-            String className, List<ABIDefinition> functionDefinitions) {
+            boolean isWasm, String className, List<ABIDefinition> functionDefinitions)
+            throws ClassNotFoundException {
         boolean constructor = false;
         List<MethodSpec> methodSpecs = new ArrayList<>();
         for (ABIDefinition functionDefinition : functionDefinitions) {
             if (functionDefinition.getType().equals("constructor")) {
                 constructor = true;
-                methodSpecs.add(
-                        buildDeploy(
-                                className, functionDefinition, CryptoKeyPair.class, CREDENTIAL));
+                methodSpecs.add(this.buildDeploy(isWasm, className, functionDefinition));
             }
         }
         // constructor will not be specified in ABI file if its empty
         if (!constructor) {
-            MethodSpec.Builder credentialsMethodBuilder =
-                    getDeployMethodSpec(className, CryptoKeyPair.class, CREDENTIAL);
-            methodSpecs.add(buildDeployNoParams(credentialsMethodBuilder, className, CREDENTIAL));
+            MethodSpec.Builder credentialsMethodBuilder = getDeployMethodSpec(isWasm, className);
+            methodSpecs.add(buildDeployNoParams(isWasm, credentialsMethodBuilder, className));
         }
         return methodSpecs;
     }
@@ -358,116 +559,137 @@ public class SolidityContractWrapper {
         return fields;
     }
 
-    private static MethodSpec buildGetBinaryMethod(
-            Class authType, Class cryptoType, String authName) {
+    private static MethodSpec buildGetBinaryMethod() {
         MethodSpec.Builder toReturn =
                 MethodSpec.methodBuilder(GET_BINARY_FUNC)
-                        .addParameter(authType, authName)
+                        .addParameter(CryptoSuite.class, ContractWrapper.CRYPTO_SUITE)
                         .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
                         .returns(String.class);
 
         toReturn.addStatement(
                 "return ($N.getCryptoTypeConfig() == $T.ECDSA_TYPE ? $N : $N)",
-                authName,
-                cryptoType,
+                ContractWrapper.CRYPTO_SUITE,
+                CryptoType.class,
                 BINARY_NAME,
                 SM_BINARY_NAME);
         return toReturn.build();
     }
 
-    private static MethodSpec buildConstructor(Class authType, String authName) {
+    private static MethodSpec buildGetABIMethod() {
+        MethodSpec.Builder toReturn =
+                MethodSpec.methodBuilder(GET_ABI_FUNC)
+                        .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                        .returns(String.class);
+
+        toReturn.addStatement("return $N", ABI_NAME);
+        return toReturn.build();
+    }
+
+    private static MethodSpec buildConstructor() {
         MethodSpec.Builder toReturn =
                 MethodSpec.constructorBuilder()
                         .addModifiers(Modifier.PROTECTED)
                         .addParameter(String.class, CONTRACT_ADDRESS)
                         .addParameter(Client.class, CLIENT)
-                        .addParameter(authType, authName)
+                        .addParameter(CryptoKeyPair.class, ContractWrapper.CREDENTIAL)
                         .addStatement(
                                 "super($N, $N, $N, $N)",
                                 getBinaryFuncDefinition(),
                                 CONTRACT_ADDRESS,
                                 CLIENT,
-                                authName);
+                                ContractWrapper.CREDENTIAL);
         return toReturn.build();
     }
 
     private MethodSpec buildDeploy(
-            String className, ABIDefinition functionDefinition, Class authType, String authName) {
-        MethodSpec.Builder methodBuilder = getDeployMethodSpec(className, authType, authName);
-        String inputParams = addParameters(methodBuilder, functionDefinition.getInputs());
+            boolean isWasm, String className, ABIDefinition functionDefinition)
+            throws ClassNotFoundException {
+        MethodSpec.Builder methodBuilder = getDeployMethodSpec(isWasm, className);
+        String inputParams = this.addParameters(methodBuilder, functionDefinition.getInputs());
 
         if (!inputParams.isEmpty()) {
-            return buildDeployWithParams(methodBuilder, className, inputParams, authName);
+            return buildDeployWithParams(isWasm, methodBuilder, className, inputParams);
         } else {
-            return buildDeployNoParams(methodBuilder, className, authName);
+            return buildDeployNoParams(isWasm, methodBuilder, className);
         }
     }
 
     private static MethodSpec buildDeployWithParams(
+            boolean isWasm,
             MethodSpec.Builder methodBuilder,
             String className,
-            String inputParams,
-            String authName) {
-
+            String inputParams) {
         methodBuilder
                 .addStatement(
-                        "$T encodedConstructor = $T.encodeConstructor(" + "$T.<$T>asList($L)" + ")",
-                        String.class,
-                        FunctionEncoder.class,
+                        "byte[] encodedConstructor = $T.encodeConstructor("
+                                + "$T.<$T>asList($L)"
+                                + ")",
+                        isWasm
+                                ? org.fisco.bcos.sdk.v3.codec.scale.FunctionEncoder.class
+                                : org.fisco.bcos.sdk.v3.codec.abi.FunctionEncoder.class,
                         Arrays.class,
                         Type.class,
                         inputParams)
                 .addStatement(
-                        "return deploy(" + "$L.class, $L, $L, $L, encodedConstructor)",
+                        "return deploy(" + "$L.class, $L, $L, $L, $L, encodedConstructor, $L)",
                         className,
                         CLIENT,
-                        authName,
-                        getBinaryFuncDefinition());
+                        ContractWrapper.CREDENTIAL,
+                        getBinaryFuncDefinition(),
+                        getABIFuncDefinition(),
+                        isWasm ? PATH : "null");
         return methodBuilder.build();
     }
 
     private static MethodSpec buildDeployNoParams(
-            MethodSpec.Builder methodBuilder, String className, String authName) {
+            boolean isWasm, MethodSpec.Builder methodBuilder, String className) {
         methodBuilder.addStatement(
-                "return deploy($L.class, $L, $L, $L, \"\")",
+                "return deploy($L.class, $L, $L, $L, $L, null, $L)",
                 className,
                 CLIENT,
-                authName,
-                getBinaryFuncDefinition());
+                ContractWrapper.CREDENTIAL,
+                getBinaryFuncDefinition(),
+                getABIFuncDefinition(),
+                isWasm ? PATH : "null");
         return methodBuilder.build();
     }
 
-    private static MethodSpec.Builder getDeployMethodSpec(
-            String className, Class authType, String authName) {
-        return MethodSpec.methodBuilder("deploy")
-                .addException(ContractException.class)
-                .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
-                .returns(TypeVariableName.get(className, Type.class))
-                .addParameter(Client.class, CLIENT)
-                .addParameter(authType, authName);
+    private static MethodSpec.Builder getDeployMethodSpec(boolean isWasm, String className) {
+        MethodSpec.Builder methodSpec =
+                MethodSpec.methodBuilder("deploy")
+                        .addException(ContractException.class)
+                        .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                        .returns(TypeVariableName.get(className, Type.class))
+                        .addParameter(Client.class, CLIENT)
+                        .addParameter(CryptoKeyPair.class, ContractWrapper.CREDENTIAL);
+        if (isWasm) {
+            methodSpec.addParameter(String.class, PATH);
+        }
+        return methodSpec;
     }
 
-    private static MethodSpec buildLoad(String className, Class authType, String authName) {
+    private static MethodSpec buildLoad(String className) {
         MethodSpec.Builder toReturn =
                 MethodSpec.methodBuilder("load")
                         .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
                         .returns(TypeVariableName.get(className, Type.class))
                         .addParameter(String.class, CONTRACT_ADDRESS)
                         .addParameter(Client.class, CLIENT)
-                        .addParameter(authType, authName)
+                        .addParameter(CryptoKeyPair.class, ContractWrapper.CREDENTIAL)
                         .addStatement(
                                 "return new $L($L, $L, $L)",
                                 className,
                                 CONTRACT_ADDRESS,
                                 CLIENT,
-                                authName);
+                                ContractWrapper.CREDENTIAL);
         return toReturn.build();
     }
 
     private MethodSpec.Builder addParameter(
-            MethodSpec.Builder methodBuilder, String type, String name) {
+            MethodSpec.Builder methodBuilder, String type, String name)
+            throws ClassNotFoundException {
 
-        ParameterSpec parameterSpec = buildParameterType(type, name);
+        ParameterSpec parameterSpec = this.buildParameterType(type, name);
 
         TypeName typeName = getNativeType(parameterSpec.type);
 
@@ -479,10 +701,11 @@ public class SolidityContractWrapper {
     }
 
     private String addParameters(
-            MethodSpec.Builder methodBuilder, List<ABIDefinition.NamedType> namedTypes) {
+            MethodSpec.Builder methodBuilder, List<ABIDefinition.NamedType> namedTypes)
+            throws ClassNotFoundException {
         List<ParameterSpec> inputParameterTypes = buildParameterTypes(namedTypes);
         List<ParameterSpec> nativeInputParameterTypes = new ArrayList<>(inputParameterTypes.size());
-        for (int i = 0; i < inputParameterTypes.size(); i++) {
+        for (int i = 0; i < inputParameterTypes.size(); ++i) {
             final TypeName typeName;
             if (namedTypes.get(i).getType().equals("tuple")) {
                 typeName = structClassNameMap.get(namedTypes.get(i).structIdentifier());
@@ -492,34 +715,64 @@ public class SolidityContractWrapper {
             } else {
                 typeName = getNativeType(inputParameterTypes.get(i).type);
             }
-
             nativeInputParameterTypes.add(
                     ParameterSpec.builder(typeName, inputParameterTypes.get(i).name).build());
         }
         methodBuilder.addParameters(nativeInputParameterTypes);
-        return Collection.join(
-                inputParameterTypes,
-                ", \n",
-                // this results in fully qualified names being generated
-                this::createMappedParameterTypes);
+        return Collection.join(inputParameterTypes, ", \n", this::createMappedParameterTypes);
     }
 
-    private String addParameters(List<ABIDefinition.NamedType> namedTypes) {
+    /**
+     * Verifies if the two structs are the same. Equal structs means: - They have the same field
+     * names - They have the same field types The order of declaring the fields does not matter.
+     *
+     * @return True if they are the same fields
+     */
+    private static boolean isSameStruct(
+            ABIDefinition.NamedType base, ABIDefinition.NamedType target) {
+        for (ABIDefinition.NamedType baseField : base.getComponents()) {
+            if (target.getComponents().stream()
+                    .noneMatch(
+                            targetField ->
+                                    baseField.getType().equals(targetField.getType())
+                                            && baseField.getName().equals(targetField.getName())))
+                return false;
+        }
+        return true;
+    }
 
-        List<ParameterSpec> inputParameterTypes = buildParameterTypes(namedTypes);
-
-        List<ParameterSpec> nativeInputParameterTypes = new ArrayList<>(inputParameterTypes.size());
-        for (ParameterSpec parameterSpec : inputParameterTypes) {
-            TypeName typeName = getNativeType(parameterSpec.type);
-            nativeInputParameterTypes.add(
-                    ParameterSpec.builder(typeName, parameterSpec.name).build());
+    private TypeName buildStructArrayTypeName(ABIDefinition.NamedType namedType) {
+        String structName;
+        if (namedType.getInternalType().isEmpty()) {
+            structName =
+                    structClassNameMap
+                            .get(
+                                    structsNamedTypeList.stream()
+                                            .filter(struct -> isSameStruct(namedType, struct))
+                                            .collect(Collectors.toList())
+                                            .get(0)
+                                            .structIdentifier())
+                            .toString();
+        } else {
+            if (isWasm) {
+                structName =
+                        namedType
+                                .getInternalType()
+                                .substring(
+                                        namedType.getInternalType().lastIndexOf(".") + 1,
+                                        namedType.getInternalType().indexOf("["));
+            } else {
+                structName =
+                        namedType
+                                .getInternalType()
+                                .substring(
+                                        namedType.getInternalType().lastIndexOf(" ") + 1,
+                                        namedType.getInternalType().indexOf("["));
+            }
         }
 
-        return Collection.join(
-                inputParameterTypes,
-                ", \n",
-                // this results in fully qualified names being generated
-                this::createMappedParameterTypes);
+        return ParameterizedTypeName.get(
+                ClassName.get(DynamicArray.class), ClassName.get("", structName));
     }
 
     private String createMappedParameterTypes(ParameterSpec parameterSpec) {
@@ -540,7 +793,18 @@ public class SolidityContractWrapper {
 
                 if (structClassNameMap.values().stream()
                         .anyMatch(name -> name.equals(typeArgument))) {
-                    return parameterSpec.name;
+                    TypeName structName =
+                            structClassNameMap.values().stream()
+                                    .filter(name -> name.equals(typeArgument))
+                                    .collect(Collectors.toList())
+                                    .get(0);
+                    return "new "
+                            + parameterSpec.type
+                            + "("
+                            + structName
+                            + ".class, "
+                            + parameterSpec.name
+                            + ")";
                 } else {
                     String parameterSpecType = parameterSpec.type.toString();
                     TypeName typeName = typeNames.get(0);
@@ -572,7 +836,7 @@ public class SolidityContractWrapper {
                             + "        "
                             + componentType
                             + ".class,\n"
-                            + "        org.fisco.bcos.sdk.codec.Utils.typeMap("
+                            + "        org.fisco.bcos.sdk.v3.codec.Utils.typeMap("
                             + parameterSpec.name
                             + ", "
                             + typeMapInput
@@ -630,8 +894,7 @@ public class SolidityContractWrapper {
             nativeTypeNames.add(getNativeType(enclosedTypeName));
         }
         return ParameterizedTypeName.get(
-                ClassName.get(List.class),
-                nativeTypeNames.toArray(new TypeName[nativeTypeNames.size()]));
+                ClassName.get(List.class), nativeTypeNames.toArray(new TypeName[0]));
     }
 
     protected static TypeName getEventNativeType(TypeName typeName) {
@@ -647,13 +910,13 @@ public class SolidityContractWrapper {
         }
     }
 
-    private ParameterSpec buildParameterType(String type, String name) {
-
+    private ParameterSpec buildParameterType(String type, String name)
+            throws ClassNotFoundException {
         return ParameterSpec.builder(buildTypeName(type), name).build();
     }
 
-    protected static List<ParameterSpec> buildParameterTypes(
-            List<ABIDefinition.NamedType> namedTypes) {
+    protected List<ParameterSpec> buildParameterTypes(List<ABIDefinition.NamedType> namedTypes)
+            throws ClassNotFoundException {
 
         List<ParameterSpec> result = new ArrayList<>(namedTypes.size());
         for (int i = 0; i < namedTypes.size(); i++) {
@@ -693,7 +956,8 @@ public class SolidityContractWrapper {
         }
     }
 
-    protected static List<TypeName> buildTypeNames(List<ABIDefinition.NamedType> namedTypes) {
+    protected List<TypeName> buildTypeNames(List<ABIDefinition.NamedType> namedTypes)
+            throws ClassNotFoundException {
         List<TypeName> result = new ArrayList<>(namedTypes.size());
         for (ABIDefinition.NamedType namedType : namedTypes) {
             if (namedType.getType().equals("tuple")) {
@@ -719,14 +983,14 @@ public class SolidityContractWrapper {
         MethodSpec.Builder methodBuilder =
                 MethodSpec.methodBuilder(functionName).addModifiers(Modifier.PUBLIC);
 
-        String inputParams = addParameters(methodBuilder, functionDefinition.getInputs());
+        String inputParams = this.addParameters(methodBuilder, functionDefinition.getInputs());
 
         List<TypeName> outputParameterTypes = buildTypeNames(functionDefinition.getOutputs());
         if (functionDefinition.isConstant()) {
-            buildConstantFunction(
+            this.buildConstantFunction(
                     functionDefinition, methodBuilder, outputParameterTypes, inputParams);
         } else {
-            buildTransactionFunction(functionDefinition, methodBuilder, inputParams);
+            this.buildTransactionFunction(functionDefinition, methodBuilder, inputParams);
         }
 
         return methodBuilder.build();
@@ -744,9 +1008,9 @@ public class SolidityContractWrapper {
         MethodSpec.Builder methodBuilder =
                 MethodSpec.methodBuilder(functionName).addModifiers(Modifier.PUBLIC);
 
-        String inputParams = addParameters(methodBuilder, functionDefinition.getInputs());
+        String inputParams = this.addParameters(methodBuilder, functionDefinition.getInputs());
 
-        buildTransactionFunctionSeq(functionDefinition, methodBuilder, inputParams);
+        this.buildTransactionFunctionSeq(functionDefinition, methodBuilder, inputParams);
 
         return methodBuilder.build();
     }
@@ -761,13 +1025,14 @@ public class SolidityContractWrapper {
         List<TypeName> outputParameterTypes = buildTypeNames(functionDefinition.getOutputs());
 
         if (functionDefinition.isConstant()) {
-            String inputParams = addParameters(methodBuilder, functionDefinition.getInputs());
-            buildConstantFunction(
+            String inputParams = this.addParameters(methodBuilder, functionDefinition.getInputs());
+            this.buildConstantFunction(
                     functionDefinition, methodBuilder, outputParameterTypes, inputParams);
         } else {
-            String inputParams = addParameters(methodBuilder, functionDefinition.getInputs());
+            String inputParams = this.addParameters(methodBuilder, functionDefinition.getInputs());
             methodBuilder.addParameter(TransactionCallback.class, "callback");
-            buildTransactionFunctionWithCallback(functionDefinition, methodBuilder, inputParams);
+            this.buildTransactionFunctionWithCallback(
+                    functionDefinition, methodBuilder, inputParams);
         }
 
         return methodBuilder.build();
@@ -780,24 +1045,24 @@ public class SolidityContractWrapper {
         }
 
         List<ABIDefinition.NamedType> nameTypes = functionDefinition.getInputs();
-        String name = functionDefinition.getName();
-        for (int i = 0; i < nameTypes.size(); i++) {
-            ABIDefinition.Type type = nameTypes.get(i).newType();
-            name += StringUtils.capitaliseFirstLetter(type.getRawType());
+        StringBuilder name = new StringBuilder(functionDefinition.getName());
+        for (ABIDefinition.NamedType nameType : nameTypes) {
+            ABIDefinition.Type type = nameType.newType();
+            name.append(StringUtils.capitaliseFirstLetter(type.getRawType()));
             if (!type.isList()) {
                 continue;
             }
             // parse the array or the struct
             List<Integer> depths = type.getDimensions();
-            for (int j = 0; j < depths.size(); j++) {
-                name += type.getRawType();
-                if (0 != depths.get(j)) {
-                    name += String.valueOf(depths.get(j));
+            for (Integer depth : depths) {
+                name.append(type.getRawType());
+                if (0 != depth) {
+                    name.append(depth);
                 }
             }
         }
         logger.debug(" name: {}, nameTypes: {}", name, nameTypes);
-        return name;
+        return name.toString();
     }
 
     private MethodSpec buildFunctionWithInputDecoder(
@@ -826,10 +1091,8 @@ public class SolidityContractWrapper {
 
         ParameterizedTypeName parameterizedTupleType =
                 ParameterizedTypeName.get(
-                        ClassName.get(
-                                "org.fisco.bcos.sdk.abi.datatypes.generated.tuples.generated",
-                                "Tuple" + returnTypes.size()),
-                        returnTypes.toArray(new TypeName[returnTypes.size()]));
+                        ClassName.get(TUPLE_PACKAGE_NAME, "Tuple" + returnTypes.size()),
+                        returnTypes.toArray(new TypeName[0]));
 
         methodBuilder.returns(parameterizedTupleType);
         methodBuilder.addStatement("String data = transactionReceipt.getInput().substring(10)");
@@ -841,11 +1104,10 @@ public class SolidityContractWrapper {
                 buildTypeNames(functionDefinition.getInputs()));
 
         methodBuilder.addStatement(
-                "$T<Type> results = $T.decode(data, function.getOutputParameters())",
-                List.class,
-                FunctionReturnDecoder.class);
+                "$T<Type> results = this.functionReturnDecoder.decode(data, function.getOutputParameters())",
+                List.class);
 
-        buildTupleResultContainer0(
+        this.buildTupleResultContainer0(
                 methodBuilder,
                 parameterizedTupleType,
                 buildTypeNames(functionDefinition.getInputs()));
@@ -879,10 +1141,8 @@ public class SolidityContractWrapper {
 
         ParameterizedTypeName parameterizedTupleType =
                 ParameterizedTypeName.get(
-                        ClassName.get(
-                                "org.fisco.bcos.sdk.abi.datatypes.generated.tuples.generated",
-                                "Tuple" + returnTypes.size()),
-                        returnTypes.toArray(new TypeName[returnTypes.size()]));
+                        ClassName.get(TUPLE_PACKAGE_NAME, "Tuple" + returnTypes.size()),
+                        returnTypes.toArray(new TypeName[0]));
 
         methodBuilder.returns(parameterizedTupleType);
         methodBuilder.addStatement("String data = transactionReceipt.getOutput()");
@@ -894,11 +1154,10 @@ public class SolidityContractWrapper {
                 buildTypeNames(functionDefinition.getOutputs()));
 
         methodBuilder.addStatement(
-                "$T<Type> results = $T.decode(data, function.getOutputParameters())",
-                List.class,
-                FunctionReturnDecoder.class);
+                "$T<Type> results = this.functionReturnDecoder.decode(data, function.getOutputParameters())",
+                List.class);
 
-        buildTupleResultContainer0(
+        this.buildTupleResultContainer0(
                 methodBuilder,
                 parameterizedTupleType,
                 buildTypeNames(functionDefinition.getOutputs()));
@@ -910,9 +1169,7 @@ public class SolidityContractWrapper {
             ABIDefinition functionDefinition,
             MethodSpec.Builder methodBuilder,
             List<TypeName> outputParameterTypes,
-            String inputParams)
-            throws ClassNotFoundException {
-
+            String inputParams) {
         String functionName = functionDefinition.getName();
         methodBuilder.addException(ContractException.class);
         if (outputParameterTypes.isEmpty()) {
@@ -920,16 +1177,14 @@ public class SolidityContractWrapper {
                     "throw new RuntimeException"
                             + "(\"cannot call constant function with void return type\")");
         } else if (outputParameterTypes.size() == 1) {
-
             TypeName typeName = outputParameterTypes.get(0);
             TypeName nativeReturnTypeName;
-
             ABIDefinition.NamedType outputType = functionDefinition.getOutputs().get(0);
             if (outputType.getType().equals("tuple")) {
                 nativeReturnTypeName = structClassNameMap.get(outputType.structIdentifier());
             } else if (outputType.getType().startsWith("tuple")
                     && outputType.getType().contains("[")) {
-                nativeReturnTypeName = typeName;
+                nativeReturnTypeName = buildStructArrayTypeName(outputType);
             } else {
                 nativeReturnTypeName = this.getWrapperRawType(typeName);
             }
@@ -965,45 +1220,51 @@ public class SolidityContractWrapper {
                         nativeReturnTypeName);
                 callCode.addStatement("return convertToNative(result)");
                 methodBuilder.returns(nativeReturnTypeName).addCode(callCode.build());
-            } else if (nativeReturnTypeName instanceof ParameterizedTypeName) {
-                methodBuilder.addStatement(
-                        "return executeCallWithSingleValueReturn(function, $T.class)",
-                        ((ParameterizedTypeName) nativeReturnTypeName).rawType);
             } else {
                 methodBuilder.addStatement(
                         "return executeCallWithSingleValueReturn(function, $T.class)",
                         nativeReturnTypeName);
             }
         } else {
-            List<TypeName> returnTypes = buildReturnTypes(outputParameterTypes);
+            List<TypeName> returnTypes = new ArrayList<>();
+            for (int i = 0; i < functionDefinition.getOutputs().size(); ++i) {
+                ABIDefinition.NamedType outputType = functionDefinition.getOutputs().get(i);
+                if (outputType.getType().equals("tuple")) {
+                    returnTypes.add(structClassNameMap.get(outputType.structIdentifier()));
+                } else if (outputType.getType().startsWith("tuple")
+                        && outputType.getType().contains("[")) {
+                    returnTypes.add(buildStructArrayTypeName(outputType));
+                } else {
+                    returnTypes.add(getNativeType(outputParameterTypes.get(i)));
+                }
+            }
 
             ParameterizedTypeName parameterizedTupleType =
                     ParameterizedTypeName.get(
-                            ClassName.get(
-                                    "org.fisco.bcos.sdk.abi.datatypes.generated.tuples.generated",
-                                    "Tuple" + returnTypes.size()),
-                            returnTypes.toArray(new TypeName[returnTypes.size()]));
+                            ClassName.get(TUPLE_PACKAGE_NAME, "Tuple" + returnTypes.size()),
+                            returnTypes.toArray(new TypeName[0]));
 
             methodBuilder.returns(parameterizedTupleType);
 
             buildVariableLengthReturnFunctionConstructor(
                     methodBuilder, functionName, inputParams, outputParameterTypes);
 
-            buildTupleResultContainer(methodBuilder, parameterizedTupleType, outputParameterTypes);
+            this.buildTupleResultContainer(
+                    methodBuilder, parameterizedTupleType, outputParameterTypes);
         }
     }
 
     private void buildTransactionFunction(
-            ABIDefinition functionDefinition, MethodSpec.Builder methodBuilder, String inputParams)
-            throws ClassNotFoundException {
-
+            ABIDefinition functionDefinition,
+            MethodSpec.Builder methodBuilder,
+            String inputParams) {
         String functionName = functionDefinition.getName();
 
         methodBuilder.returns(TypeName.get(TransactionReceipt.class));
-
+        int dagAttribute = getDagAttribute(functionDefinition);
         methodBuilder.addStatement(
                 "final $T function = new $T(\n$N, \n$T.<$T>asList($L), \n$T"
-                        + ".<$T<?>>emptyList())",
+                        + ".<$T<?>>emptyList(), $L)",
                 Function.class,
                 Function.class,
                 funcNameToConst(functionName),
@@ -1011,21 +1272,36 @@ public class SolidityContractWrapper {
                 Type.class,
                 inputParams,
                 Collections.class,
-                TypeReference.class);
+                TypeReference.class,
+                dagAttribute);
         methodBuilder.addStatement("return executeTransaction(function)");
     }
 
+    private int getDagAttribute(ABIDefinition functionDefinition) {
+        int dagAttribute = 0;
+        if (!functionDefinition.getConflictFields().isEmpty()) {
+            for (ABIDefinition.ConflictField f : functionDefinition.getConflictFields()) {
+                if (f.getKind() == 0 || f.getKind() == 1 || f.getKind() == 4) {
+                    return dagAttribute;
+                }
+            }
+            dagAttribute = TransactionAttribute.DAG;
+        }
+        return dagAttribute;
+    }
+
     private void buildTransactionFunctionWithCallback(
-            ABIDefinition functionDefinition, MethodSpec.Builder methodBuilder, String inputParams)
-            throws ClassNotFoundException {
+            ABIDefinition functionDefinition,
+            MethodSpec.Builder methodBuilder,
+            String inputParams) {
         String functionName = functionDefinition.getName();
 
-        TypeName returnType = TypeName.get(byte[].class);
-        methodBuilder.returns(returnType);
+        methodBuilder.returns(String.class);
+        int dagAttribute = getDagAttribute(functionDefinition);
 
         methodBuilder.addStatement(
                 "final $T function = new $T(\n$N, \n$T.<$T>asList($L), \n$T"
-                        + ".<$T<?>>emptyList())",
+                        + ".<$T<?>>emptyList(), $L)",
                 Function.class,
                 Function.class,
                 funcNameToConst(functionName),
@@ -1033,21 +1309,23 @@ public class SolidityContractWrapper {
                 Type.class,
                 inputParams,
                 Collections.class,
-                TypeReference.class);
+                TypeReference.class,
+                dagAttribute);
         methodBuilder.addStatement("return asyncExecuteTransaction(function, callback)");
     }
 
     private void buildTransactionFunctionSeq(
-            ABIDefinition functionDefinition, MethodSpec.Builder methodBuilder, String inputParams)
-            throws ClassNotFoundException {
+            ABIDefinition functionDefinition,
+            MethodSpec.Builder methodBuilder,
+            String inputParams) {
         String functionName = functionDefinition.getName();
 
         TypeName returnType = TypeName.get(String.class);
         methodBuilder.returns(returnType);
-
+        int dagAttribute = getDagAttribute(functionDefinition);
         methodBuilder.addStatement(
                 "final $T function = new $T(\n$N, \n$T.<$T>asList($L), \n$T"
-                        + ".<$T<?>>emptyList())",
+                        + ".<$T<?>>emptyList(), $L)",
                 Function.class,
                 Function.class,
                 funcNameToConst(functionName),
@@ -1055,7 +1333,8 @@ public class SolidityContractWrapper {
                 Type.class,
                 inputParams,
                 Collections.class,
-                TypeReference.class);
+                TypeReference.class,
+                dagAttribute);
 
         methodBuilder.addStatement("return createSignedTransaction(function)");
     }
@@ -1070,12 +1349,28 @@ public class SolidityContractWrapper {
 
         builder.addField(TransactionReceipt.Logs.class, "log", Modifier.PUBLIC);
         for (NamedTypeName namedType : indexedParameters) {
-            TypeName typeName = getEventNativeType(namedType.typeName);
+            final TypeName typeName;
+            if (namedType.getType().equals("tuple")) {
+                typeName = structClassNameMap.get(namedType.structIdentifier());
+            } else if (namedType.getType().startsWith("tuple")
+                    && namedType.getType().contains("[")) {
+                typeName = buildStructArrayTypeName(namedType.namedType);
+            } else {
+                typeName = getEventNativeType(namedType.typeName);
+            }
             builder.addField(typeName, namedType.getName(), Modifier.PUBLIC);
         }
 
         for (NamedTypeName namedType : nonIndexedParameters) {
-            TypeName typeName = getNativeType(namedType.typeName);
+            final TypeName typeName;
+            if (namedType.getType().equals("tuple")) {
+                typeName = structClassNameMap.get(namedType.structIdentifier());
+            } else if (namedType.getType().startsWith("tuple")
+                    && namedType.getType().contains("[")) {
+                typeName = buildStructArrayTypeName(namedType.namedType);
+            } else {
+                typeName = getNativeType(namedType.typeName);
+            }
             builder.addField(typeName, namedType.getName(), Modifier.PUBLIC);
         }
 
@@ -1083,7 +1378,6 @@ public class SolidityContractWrapper {
     }
 
     private MethodSpec buildSubscribeEventFunction(String eventName) throws ClassNotFoundException {
-
         String generatedFunctionName =
                 "subscribe" + StringUtils.capitaliseFirstLetter(eventName) + "Event";
 
@@ -1093,10 +1387,11 @@ public class SolidityContractWrapper {
                         .addParameter(String.class, FROM_BLOCK)
                         .addParameter(String.class, TO_BLOCK);
 
-        addParameter(getEventMethodBuilder, "string[]", OTHER_TOPICS);
-        getEventMethodBuilder.addParameter(EventCallback.class, CALLBACK_VALUE);
+        this.addParameter(getEventMethodBuilder, "string[]", OTHER_TOPICS);
+        // FIXME: implement event sub
+        //        getEventMethodBuilder.addParameter(EventCallback.class, CALLBACK_VALUE);
         getEventMethodBuilder.addStatement(
-                "String topic0 = $N.encode(" + buildEventDefinitionName(eventName) + ")",
+                "String topic0 = $N.encode(" + this.buildEventDefinitionName(eventName) + ")",
                 EVENT_ENCODER);
 
         getEventMethodBuilder.addStatement(
@@ -1117,14 +1412,13 @@ public class SolidityContractWrapper {
     }
 
     private MethodSpec buildDefaultSubscribeEventLog(String eventName) {
-
         String generatedFunctionName =
                 "subscribe" + StringUtils.capitaliseFirstLetter(eventName) + "Event";
 
         MethodSpec.Builder getEventMethodBuilder =
                 MethodSpec.methodBuilder(generatedFunctionName)
                         .addModifiers(Modifier.PUBLIC)
-                        .addParameter(EventCallback.class, CALLBACK_VALUE);
+                        .addParameter(EventSubCallback.class, CALLBACK_VALUE);
 
         getEventMethodBuilder.addStatement(
                 "String topic0 = $N.encode(" + buildEventDefinitionName(eventName) + ")",
@@ -1157,7 +1451,7 @@ public class SolidityContractWrapper {
         transactionMethodBuilder
                 .addStatement(
                         "$T valueList = extractEventParametersWithLog("
-                                + buildEventDefinitionName(functionName)
+                                + this.buildEventDefinitionName(functionName)
                                 + ", "
                                 + "transactionReceipt)",
                         ParameterizedTypeName.get(List.class, Contract.EventValuesWithLog.class))
@@ -1170,7 +1464,7 @@ public class SolidityContractWrapper {
                         "for ($T eventValues : valueList)", Contract.EventValuesWithLog.class)
                 .addStatement("$1T typedResponse = new $1T()", ClassName.get("", responseClassName))
                 .addCode(
-                        buildTypedResponse(
+                        this.buildTypedResponse(
                                 "typedResponse", indexedParameters, nonIndexedParameters, false))
                 .addStatement("responses.add(typedResponse)")
                 .endControlFlow();
@@ -1191,7 +1485,7 @@ public class SolidityContractWrapper {
         List<NamedTypeName> indexedParameters = new ArrayList<>();
         List<NamedTypeName> nonIndexedParameters = new ArrayList<>();
 
-        Integer index = 0;
+        int index = 0;
         Set<String> eventParamNameFilter = new HashSet<>();
         for (ABIDefinition.NamedType namedType : inputs) {
             if (namedType.getName() != null && !namedType.getName().equals("")) {
@@ -1199,6 +1493,16 @@ public class SolidityContractWrapper {
             }
         }
         for (ABIDefinition.NamedType namedType : inputs) {
+            final TypeName typeName;
+            if (namedType.getType().equals("tuple")) {
+                typeName = structClassNameMap.get(namedType.structIdentifier());
+            } else if (namedType.getType().startsWith("tuple")
+                    && namedType.getType().contains("[")) {
+                typeName = buildStructArrayTypeName(namedType);
+            } else {
+                typeName = buildTypeName(namedType.getType());
+            }
+
             if (namedType.getName() == null || namedType.getName().equals("")) {
                 String paramName = functionName + "Param" + index;
                 while (eventParamNameFilter.contains(paramName)) {
@@ -1208,11 +1512,8 @@ public class SolidityContractWrapper {
                 eventParamNameFilter.add(paramName);
                 namedType.setName(paramName);
             }
-            NamedTypeName parameter =
-                    new NamedTypeName(
-                            namedType.getName(),
-                            buildTypeName(namedType.getType()),
-                            namedType.isIndexed());
+
+            NamedTypeName parameter = new NamedTypeName(namedType, typeName);
             if (namedType.isIndexed()) {
                 indexedParameters.add(parameter);
             } else {
@@ -1221,19 +1522,16 @@ public class SolidityContractWrapper {
             parameters.add(parameter);
         }
 
-        classBuilder.addField(createEventDefinition(functionName, parameters));
+        classBuilder.addField(this.createEventDefinition(functionName, parameters));
 
         classBuilder.addType(
-                buildEventResponseObject(
+                this.buildEventResponseObject(
                         responseClassName, indexedParameters, nonIndexedParameters));
 
         List<MethodSpec> methods = new ArrayList<>();
         methods.add(
-                buildEventTransactionReceiptFunction(
+                this.buildEventTransactionReceiptFunction(
                         responseClassName, functionName, indexedParameters, nonIndexedParameters));
-
-        methods.add(buildSubscribeEventFunction(functionName));
-        methods.add(buildDefaultSubscribeEventLog(functionName));
 
         return methods;
     }
@@ -1243,10 +1541,6 @@ public class SolidityContractWrapper {
             List<NamedTypeName> indexedParameters,
             List<NamedTypeName> nonIndexedParameters,
             boolean flowable) {
-        String nativeConversion;
-
-        nativeConversion = ".getValue()";
-
         CodeBlock.Builder builder = CodeBlock.builder();
         if (flowable) {
             builder.addStatement("$L.log = log", objectName);
@@ -1254,62 +1548,75 @@ public class SolidityContractWrapper {
             builder.addStatement("$L.log = eventValues.getLog()", objectName);
         }
         for (int i = 0; i < indexedParameters.size(); i++) {
+            final NamedTypeName namedTypeName = indexedParameters.get(i);
+            String nativeConversion;
+            if (structClassNameMap.values().stream()
+                    .noneMatch(name -> name.equals(namedTypeName.getTypeName()))) {
+                nativeConversion = ".getValue()";
+            } else {
+                nativeConversion = "";
+            }
+
+            final TypeName typeName;
+            if (namedTypeName.getType().equals("tuple")) {
+                typeName = structClassNameMap.get(namedTypeName.structIdentifier());
+            } else if (namedTypeName.getType().startsWith("tuple")
+                    && namedTypeName.getType().contains("[")) {
+                typeName = buildStructArrayTypeName(namedTypeName.namedType);
+            } else {
+                typeName = getEventNativeType(namedTypeName.getTypeName());
+            }
+
             builder.addStatement(
                     "$L.$L = ($T) eventValues.getIndexedValues().get($L)" + nativeConversion,
                     objectName,
                     indexedParameters.get(i).getName(),
-                    getEventNativeType(indexedParameters.get(i).getTypeName()),
+                    typeName,
                     i);
         }
 
         for (int i = 0; i < nonIndexedParameters.size(); i++) {
+            final NamedTypeName namedTypeName = nonIndexedParameters.get(i);
+            final String nativeConversion;
+            if (structClassNameMap.values().stream()
+                    .noneMatch(name -> name.equals(namedTypeName.getTypeName()))) {
+                nativeConversion = ".getValue()";
+            } else {
+                nativeConversion = "";
+            }
+
+            final TypeName typeName;
+            if (nonIndexedParameters.get(i).getType().equals("tuple")) {
+                typeName = structClassNameMap.get(namedTypeName.structIdentifier());
+            } else if (nonIndexedParameters.get(i).getType().startsWith("tuple")
+                    && nonIndexedParameters.get(i).getType().contains("[")) {
+                typeName = buildStructArrayTypeName(namedTypeName.namedType);
+            } else {
+                typeName = getNativeType(nonIndexedParameters.get(i).getTypeName());
+            }
             builder.addStatement(
                     "$L.$L = ($T) eventValues.getNonIndexedValues().get($L)" + nativeConversion,
                     objectName,
                     nonIndexedParameters.get(i).getName(),
-                    getNativeType(nonIndexedParameters.get(i).getTypeName()),
+                    typeName,
                     i);
         }
         return builder.build();
     }
 
-    protected static TypeName buildTypeName(String typeDeclaration) {
+    @SuppressWarnings("rawtypes")
+    protected static TypeName buildTypeName(String typeDeclaration) throws ClassNotFoundException {
         String type = trimStorageDeclaration(typeDeclaration);
-        Matcher matcher = pattern.matcher(type);
-        if (matcher.find()) {
-            Class<?> baseType = AbiTypes.getType(matcher.group(1));
-            String firstArrayDimension = matcher.group(2);
-            String secondArrayDimension = matcher.group(3);
-
-            TypeName typeName;
-
-            if ("".equals(firstArrayDimension)) {
-                typeName = ParameterizedTypeName.get(DynamicArray.class, baseType);
-            } else {
-                Class<?> rawType = getStaticArrayTypeReferenceClass(firstArrayDimension);
-                typeName = ParameterizedTypeName.get(rawType, baseType);
-            }
-
-            if (secondArrayDimension != null) {
-                if ("".equals(secondArrayDimension)) {
-                    return ParameterizedTypeName.get(ClassName.get(DynamicArray.class), typeName);
-                } else {
-                    Class<?> rawType = getStaticArrayTypeReferenceClass(secondArrayDimension);
-                    return ParameterizedTypeName.get(ClassName.get(rawType), typeName);
-                }
-            }
-            return typeName;
-        } else {
-            Class<?> cls = AbiTypes.getType(type);
-            return ClassName.get(cls);
-        }
+        final TypeReference typeReference = TypeReference.makeTypeReference(type, false);
+        return TypeName.get(typeReference.getType());
     }
 
     private static Class<?> getStaticArrayTypeReferenceClass(String type) {
         try {
-            return Class.forName("org.fisco.bcos.sdk.abi.datatypes.generated.StaticArray" + type);
+            return Class.forName(
+                    "org.fisco.bcos.sdk.v3.codec.datatypes.generated.StaticArray" + type);
         } catch (ClassNotFoundException e) {
-            // Unfortunately we can't encode it's length as a type if it's > 32.
+            // Unfortunately we can't encode its length as a type if it's > 32.
             return StaticArray.class;
         }
     }
@@ -1320,14 +1627,6 @@ public class SolidityContractWrapper {
         } else {
             return type;
         }
-    }
-
-    private List<TypeName> buildReturnTypes(List<TypeName> outputParameterTypes) {
-        List<TypeName> result = new ArrayList<>(outputParameterTypes.size());
-        for (TypeName typeName : outputParameterTypes) {
-            result.add(getNativeType(typeName));
-        }
-        return result;
     }
 
     private static void buildVariableLengthReturnFunctionConstructor(
@@ -1422,7 +1721,7 @@ public class SolidityContractWrapper {
         CodeBlock.Builder codeBuilder = CodeBlock.builder();
 
         String resultStringSimple = "\n($T) results.get($L)";
-        String resultGetValue = ".getValue()";
+        resultStringSimple += ".getValue()";
 
         String resultStringNativeList = "\nconvertToNative(($T) results.get($L).getValue())";
 
@@ -1433,13 +1732,11 @@ public class SolidityContractWrapper {
             TypeName param = outputParameterTypes.get(i);
             TypeName convertTo = typeArguments.get(i);
 
-            String resultString = resultStringSimple + resultGetValue;
+            String resultString = resultStringSimple;
 
             // If we use native java types we need to convert
             // elements of arrays to native java types too
-            if (param.equals(convertTo)) {
-                resultString = resultStringSimple;
-            } else if (param instanceof ParameterizedTypeName) {
+            if (param instanceof ParameterizedTypeName) {
                 ParameterizedTypeName oldContainer = (ParameterizedTypeName) param;
                 ParameterizedTypeName newContainer = (ParameterizedTypeName) convertTo;
                 if (newContainer.rawType.compareTo(classList) == 0
@@ -1496,25 +1793,31 @@ public class SolidityContractWrapper {
 
     private static class NamedTypeName {
         private final TypeName typeName;
-        private final String name;
-        private final boolean indexed;
+        private final ABIDefinition.NamedType namedType;
 
-        NamedTypeName(String name, TypeName typeName, boolean indexed) {
-            this.name = name;
+        NamedTypeName(ABIDefinition.NamedType namedType, TypeName typeName) {
+            this.namedType = namedType;
             this.typeName = typeName;
-            this.indexed = indexed;
         }
 
         public String getName() {
-            return name;
+            return namedType.getName();
+        }
+
+        public String getType() {
+            return namedType.getType();
         }
 
         public TypeName getTypeName() {
-            return typeName;
+            return this.typeName;
         }
 
         public boolean isIndexed() {
-            return indexed;
+            return namedType.isIndexed();
+        }
+
+        public int structIdentifier() {
+            return namedType.structIdentifier();
         }
     }
 
@@ -1522,253 +1825,7 @@ public class SolidityContractWrapper {
         return GET_BINARY_FUNC + "(client.getCryptoSuite())";
     }
 
-    private List<TypeSpec> buildStructTypes(List<ABIDefinition> functionDefinitions)
-            throws ClassNotFoundException {
-        final List<ABIDefinition.NamedType> orderedKeys = extractStructs(functionDefinitions);
-        int structCounter = 0;
-        List<TypeSpec> structs = new ArrayList<>();
-        for (final ABIDefinition.NamedType namedType : orderedKeys) {
-            if (!isStructType(namedType)) {
-                List<TypeName> elementTypes = new ArrayList<>();
-                for (ABIDefinition.NamedType component : namedType.getComponents()) {
-                    final TypeName typeName;
-                    if (component.getType().equals("tuple")) {
-                        typeName = structClassNameMap.get(component.structIdentifier());
-                    } else if (component.getType().startsWith("tuple")
-                            && component.getType().contains("[")) {
-                        typeName = buildStructArrayTypeName(component);
-                    } else {
-                        typeName = getNativeType(buildTypeName(component.getType()));
-                    }
-                    elementTypes.add(typeName);
-
-                    ParameterizedTypeName parameterizedTupleType =
-                            ParameterizedTypeName.get(
-                                    ClassName.get(
-                                            TUPLE_PACKAGE_NAME, "Tuple" + elementTypes.size()),
-                                    elementTypes.toArray(new TypeName[0]));
-
-                    structClassNameMap.put(namedType.structIdentifier(), parameterizedTupleType);
-                }
-                continue;
-            }
-
-            String internalType = namedType.getInternalType();
-            final String structName;
-            if (internalType == null || internalType.isEmpty()) {
-                structName = "Struct" + structCounter;
-            } else {
-                if (namedType.getType().equals("tuple[]") && internalType.endsWith("[]")) {
-                    internalType = internalType.substring(0, internalType.lastIndexOf("["));
-                }
-
-                structName = internalType.substring(internalType.lastIndexOf(" ") + 1);
-            }
-
-            final TypeSpec.Builder builder =
-                    TypeSpec.classBuilder(structName)
-                            .addModifiers(Modifier.PUBLIC, Modifier.STATIC);
-
-            final MethodSpec.Builder constructorBuilder =
-                    MethodSpec.constructorBuilder()
-                            .addModifiers(Modifier.PUBLIC)
-                            .addStatement(
-                                    "super("
-                                            + buildStructConstructorParameterDefinition(
-                                                    namedType.getComponents(), false)
-                                            + ")");
-            final MethodSpec.Builder nativeConstructorBuilder =
-                    MethodSpec.constructorBuilder()
-                            .addModifiers(Modifier.PUBLIC)
-                            .addStatement(
-                                    "super("
-                                            + buildStructConstructorParameterDefinition(
-                                                    namedType.getComponents(), true)
-                                            + ")");
-
-            for (ABIDefinition.NamedType component : namedType.getComponents()) {
-                if (component.getType().equals("tuple")) {
-                    final TypeName typeName = structClassNameMap.get(component.structIdentifier());
-                    builder.addField(typeName, component.getName(), Modifier.PUBLIC);
-                    constructorBuilder.addParameter(typeName, component.getName());
-                    nativeConstructorBuilder.addParameter(typeName, component.getName());
-                } else if (component.getType().startsWith("tuple")
-                        && component.getType().endsWith("[]")) {
-                    final TypeName typeName = buildStructArrayTypeName(component);
-                    builder.addField(typeName, component.getName(), Modifier.PUBLIC);
-                    constructorBuilder.addParameter(typeName, component.getName());
-                    nativeConstructorBuilder.addParameter(typeName, component.getName());
-                } else {
-                    final TypeName typeName = buildTypeName(component.getType());
-                    final TypeName nativeTypeName = getNativeType(typeName);
-                    builder.addField(nativeTypeName, component.getName(), Modifier.PUBLIC);
-                    constructorBuilder.addParameter(typeName, component.getName());
-                    nativeConstructorBuilder.addParameter(nativeTypeName, component.getName());
-                }
-                nativeConstructorBuilder.addStatement(
-                        "this." + component.getName() + " = " + component.getName());
-                constructorBuilder.addStatement(
-                        "this."
-                                + component.getName()
-                                + " = "
-                                + component.getName()
-                                + (structClassNameMap.keySet().stream()
-                                                .noneMatch(i -> i == component.structIdentifier())
-                                        ? ".getValue()"
-                                        : ""));
-            }
-
-            builder.superclass(namedType.isDynamic() ? DynamicStruct.class : StaticStruct.class);
-            builder.addMethod(constructorBuilder.build());
-            if (!namedType.getComponents().isEmpty()
-                    && namedType.getComponents().stream()
-                            .anyMatch(
-                                    component ->
-                                            structClassNameMap.keySet().stream()
-                                                    .noneMatch(
-                                                            i ->
-                                                                    i
-                                                                            == component
-                                                                                    .structIdentifier()))) {
-                builder.addMethod(nativeConstructorBuilder.build());
-            }
-            structClassNameMap.put(namedType.structIdentifier(), ClassName.get("", structName));
-            structs.add(builder.build());
-            structCounter++;
-        }
-        return structs;
-    }
-
-    private List<ABIDefinition.NamedType> extractStructs(
-            final List<ABIDefinition> functionDefinitions) {
-        final HashMap<Integer, ABIDefinition.NamedType> structMap = new LinkedHashMap<>();
-        functionDefinitions.stream()
-                .flatMap(
-                        definition -> {
-                            List<ABIDefinition.NamedType> parameters =
-                                    new ArrayList<>(definition.getInputs());
-                            List<ABIDefinition.NamedType> outputs = definition.getOutputs();
-                            if (outputs != null) {
-                                parameters.addAll(definition.getOutputs());
-                            }
-                            return parameters.stream()
-                                    .map(this::normalizeNamedType)
-                                    .filter(namedType -> namedType.getType().startsWith("tuple"));
-                        })
-                .forEach(
-                        namedType -> {
-                            int structIdentifier = namedType.structIdentifier();
-                            if (!structMap.containsKey(structIdentifier)) {
-                                structMap.put(structIdentifier, namedType);
-                            }
-                            extractNested(namedType).stream()
-                                    .filter(this::isStructType)
-                                    .forEach(
-                                            nestedNamedType ->
-                                                    structMap.put(
-                                                            nestedNamedType.structIdentifier(),
-                                                            nestedNamedType));
-                        });
-
-        return structMap.values().stream()
-                .sorted(Comparator.comparingInt(ABIDefinition.NamedType::nestedness))
-                .collect(Collectors.toList());
-    }
-
-    private ABIDefinition.NamedType normalizeNamedType(ABIDefinition.NamedType namedType) {
-        if (namedType.getType().endsWith("[]") && namedType.getInternalType().endsWith("[]")) {
-            return new ABIDefinition.NamedType(
-                    namedType.getName(),
-                    namedType.getType().substring(0, namedType.getType().length() - 2),
-                    namedType
-                            .getInternalType()
-                            .substring(0, namedType.getInternalType().length() - 2),
-                    namedType.isIndexed(),
-                    namedType.getComponents());
-        } else {
-            return namedType;
-        }
-    }
-
-    private boolean isStructType(ABIDefinition.NamedType namedType) {
-        return namedType.getType().startsWith("tuple");
-    }
-
-    private static TypeName buildStructArrayTypeName(ABIDefinition.NamedType namedType) {
-        String structName;
-        if (namedType.getInternalType().isEmpty()) {
-            structName =
-                    structClassNameMap
-                            .get(
-                                    structsNamedTypeList.stream()
-                                            .filter(struct -> isSameStruct(namedType, struct))
-                                            .collect(Collectors.toList())
-                                            .get(0)
-                                            .structIdentifier())
-                            .toString();
-        } else {
-            structName =
-                    namedType
-                            .getInternalType()
-                            .substring(
-                                    namedType.getInternalType().lastIndexOf(" ") + 1,
-                                    namedType.getInternalType().indexOf("["));
-        }
-
-        return ParameterizedTypeName.get(
-                ClassName.get(DynamicArray.class), ClassName.get("", structName));
-    }
-
-    private String buildStructConstructorParameterDefinition(
-            final List<ABIDefinition.NamedType> components, final boolean useNativeJavaTypes)
-            throws ClassNotFoundException {
-        final StringBuilder stringBuilder = new StringBuilder();
-        for (int i = 0; i < components.size(); i++) {
-            final ABIDefinition.NamedType component = components.get(i);
-            stringBuilder.append(i > 0 ? "," : "");
-            if (useNativeJavaTypes) {
-                stringBuilder.append(
-                        !component.getType().startsWith("tuple")
-                                ? "new "
-                                        + buildTypeName(component.getType())
-                                        + "("
-                                        + component.getName()
-                                        + ")"
-                                : component.getName());
-            } else {
-                stringBuilder.append(component.getName());
-            }
-        }
-        return stringBuilder.toString();
-    }
-
-    private java.util.Collection<? extends ABIDefinition.NamedType> extractNested(
-            final ABIDefinition.NamedType namedType) {
-        if (namedType.getComponents().size() == 0) {
-            return new ArrayList<>();
-        } else {
-            List<ABIDefinition.NamedType> nestedStructs = new ArrayList<>();
-            namedType
-                    .getComponents()
-                    .forEach(
-                            nestedNamedStruct -> {
-                                nestedStructs.add(nestedNamedStruct);
-                                nestedStructs.addAll(extractNested(nestedNamedStruct));
-                            });
-            return nestedStructs;
-        }
-    }
-
-    private static boolean isSameStruct(
-            ABIDefinition.NamedType base, ABIDefinition.NamedType target) {
-        for (ABIDefinition.NamedType baseField : base.getComponents()) {
-            if (target.getComponents().stream()
-                    .noneMatch(
-                            targetField ->
-                                    baseField.getType().equals(targetField.getType())
-                                            && baseField.getName().equals(targetField.getName())))
-                return false;
-        }
-        return true;
+    private static String getABIFuncDefinition() {
+        return GET_ABI_FUNC + "()";
     }
 }

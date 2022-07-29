@@ -13,15 +13,13 @@
  */
 package org.fisco.bcos.codegen.v3.wrapper;
 
-import org.fisco.bcos.codegen.v3.exceptions.CodeGenException;
-import org.fisco.bcos.codegen.v3.utils.CodeGenUtils;
-import org.fisco.bcos.codegen.v3.wrapper.ContractWrapper;
-
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import org.fisco.bcos.codegen.v3.exceptions.CodeGenException;
+import org.fisco.bcos.codegen.v3.utils.CodeGenUtils;
 
 /** Java wrapper source code generator for Solidity ABI format. */
 public class ContractGenerator {

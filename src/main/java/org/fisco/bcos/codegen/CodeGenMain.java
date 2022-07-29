@@ -63,7 +63,7 @@ public class CodeGenMain {
     static class PicocliRunner implements Runnable {
 
         @Option(
-                names = {"-v", "--version"},
+                names = {"-v"},
                 description = "To specified fisco-bcos-java-sdk version codeGen.",
                 required = true)
         private Version version;

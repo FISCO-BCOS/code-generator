@@ -11,7 +11,7 @@
  * express or implied. See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.fisco.bcos.codegen.v2.utils;
+package org.fisco.bcos.codegen.v3.utils;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,11 +20,13 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
-import org.fisco.bcos.sdk.abi.wrapper.ABIDefinition;
-import org.fisco.bcos.sdk.utils.ObjectMapperFactory;
-import org.fisco.bcos.codegen.v2.exceptions.CodeGenException;
+import org.fisco.bcos.codegen.v3.exceptions.CodeGenException;
+import org.fisco.bcos.sdk.v3.codec.wrapper.ABIDefinition;
 
 public final class CodeGenUtils {
+
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+
     public static String parsePositionalArg(String[] args, int idx) {
         if (args != null && args.length > idx) {
             return args[idx];
@@ -56,12 +58,11 @@ public final class CodeGenUtils {
     public static List<ABIDefinition> loadContractAbiDefinition(File abiFile)
             throws CodeGenException {
         try {
-            return ObjectMapperFactory.getObjectMapper()
-                    .readValue(abiFile, new TypeReference<List<ABIDefinition>>() {});
+            return objectMapper.readValue(abiFile, new TypeReference<List<ABIDefinition>>() {});
         } catch (IOException e) {
             throw new CodeGenException(
                     "loadContractAbiDefinition for "
-                            + abiFile.getName().toString()
+                            + abiFile.getName()
                             + " failed, error info: "
                             + e.getLocalizedMessage(),
                     e);
@@ -69,7 +70,6 @@ public final class CodeGenUtils {
     }
 
     public static List<ABIDefinition> loadContractAbiDefinition(String abi) throws IOException {
-        ObjectMapper objectMapper = ObjectMapperFactory.getObjectMapper();
         ABIDefinition[] abiDefinition = objectMapper.readValue(abi, ABIDefinition[].class);
         return Arrays.asList(abiDefinition);
     }

@@ -1,5 +1,1 @@
-rootProject.name = "abi-code-generator"
-
-include 'code-gen-v2'
-include 'code-gen-v3'
-
+rootProject.name = "code-generator"

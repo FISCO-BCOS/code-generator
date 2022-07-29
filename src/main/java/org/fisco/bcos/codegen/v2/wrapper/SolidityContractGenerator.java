@@ -15,9 +15,8 @@ package org.fisco.bcos.codegen.v2.wrapper;
 
 import java.io.File;
 import java.io.IOException;
-
-import org.fisco.bcos.codegen.v2.utils.CodeGenUtils;
 import org.fisco.bcos.codegen.v2.exceptions.CodeGenException;
+import org.fisco.bcos.codegen.v2.utils.CodeGenUtils;
 
 /** Java wrapper source code generator for Solidity ABI format. */
 public class SolidityContractGenerator {
