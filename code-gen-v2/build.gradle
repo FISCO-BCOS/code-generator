@@ -1,0 +1,30 @@
+plugins {
+    id 'java'
+}
+
+dependencies {
+    compile("org.fisco-bcos.java-sdk:fisco-bcos-java-sdk:${javaSDKVersion2}"){
+        exclude group: "io.netty"
+        exclude group: "com.webank"
+        exclude group: "net.bytebuddy"
+        exclude group: "info.picocli"
+        exclude group: "org.fisco-bcos", module: "netty-sm-ssl-context"
+        exclude group: "org.bouncycastle"
+        exclude group: "org.slf4j"
+        exclude group: "org.apache.commons"
+        exclude group: "com.moandjiezana.toml"
+        exclude group: "com.fasterxml.jackson.core"
+        exclude group: "com.squareup"
+        exclude group: "commons-io"
+    }
+}
+
+task sourcesJar(type: Jar) {
+    from sourceSets.main.allJava
+    archiveClassifier = 'sources'
+}
+
+task javadocJar(type: Jar) {
+    from javadoc
+    archiveClassifier = 'javadoc'
+}

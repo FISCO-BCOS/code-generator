@@ -1,0 +1,285 @@
+// Apply the java-library plugin to add support for Java Library
+plugins {
+    id 'maven-publish'
+    id 'java-library'
+    id 'java'
+    id 'org.ajoberstar.grgit' version '4.1.1'
+    id 'com.github.sherter.google-java-format' version '0.9'
+}
+println("Notice: current gradle version is " + gradle.gradleVersion)
+// Additional attribute definition
+repositories {
+    mavenCentral()
+    maven { url "http://maven.aliyun.com/nexus/content/groups/public/" }
+    maven { url "https://oss.sonatype.org/service/local/staging/deploy/maven2"}
+    maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
+}
+
+ext {
+    if (!project.hasProperty("ossrhUsername")) {
+        ossrhUsername = "xxx"
+    }
+
+    if (!project.hasProperty("ossrhPassword")) {
+        ossrhPassword = "xxx"
+    }
+    // jackson version
+    jacksonVersion = '2.13.2.2'
+    javapoetVersion = '1.13.0'
+    picocliVersion = '4.6.1'
+    junitVersion = '4.13.2'
+
+    javaSDKVersion3 = "3.0.0-rc4"
+    javaSDKVersion2 = "2.9.1"
+    slf4jVersion = "1.7.32"
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir 'src/main/java'
+        }
+        resources {
+            srcDir 'src/main/resources'
+        }
+    }
+}
+
+// check.dependsOn integrationTest
+// integrationTest.mustRunAfter test
+allprojects {
+    group = 'org.fisco-bcos.abi-code-generator'
+    version = '1.0.0-SNAPSHOT'
+    apply plugin: 'maven-publish'
+    apply plugin: 'idea'
+    apply plugin: 'eclipse'
+    apply plugin: 'java'
+    apply plugin: 'java-library'
+    apply plugin: 'signing'
+
+    configurations.all {
+        resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
+    }
+
+    sourceCompatibility = 1.8
+    targetCompatibility = 1.8
+
+// In this section you declare where to find the dependencies of your project
+    repositories {
+        mavenCentral()
+        maven { url "https://maven.aliyun.com/nexus/content/groups/public/" }
+        maven { url "https://oss.sonatype.org/service/local/staging/deploy/maven2" }
+        maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
+    }
+
+    dependencies {
+        compile("com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}")
+        compile("com.squareup:javapoet:${javapoetVersion}")
+        compile("info.picocli:picocli:${picocliVersion}")
+        compile ("org.slf4j:slf4j-api:${slf4jVersion}")
+        testImplementation("junit:junit:${junitVersion}")
+        testImplementation("org.mockito:mockito-core:4.6.0")
+    }
+
+    clean.doLast {
+        file("dist/apps/").deleteDir()
+        file("dist/conf/").deleteDir()
+        file("dist/lib/").deleteDir()
+    }
+}
+
+subprojects {
+    sourceSets {
+        main {
+            java {
+                srcDir 'src/main/java'
+            }
+
+            resources {
+                srcDir 'src/main/resources'
+            }
+        }
+    }
+    jar {
+        destinationDir file("dist/apps")
+        archiveName "bcos-" + project.name + "-" + project.version + ".jar"
+
+        exclude "**/*.xml"
+        exclude "**/*.properties"
+        manifest {
+            try {
+                def repo = grgit.open(currentDir: project.rootDir)
+                if (repo != null) {
+                    def date = new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+                    def branch = repo.branch.getCurrent().getName()
+                    def commit = repo.head().getAbbreviatedId(40)
+
+                    attributes(["Implementation-Timestamp": date,
+                                "Git-Branch"              : branch,
+                                "Git-Commit"              : commit
+                    ])
+
+                    logger.info("  Commit : ")
+                    logger.info("  => date: {}", date)
+                    logger.info("  => branch: {}", branch)
+                    logger.info("  => commit: {}", commit)
+                }
+            } catch (Exception e) {
+                logger.warn(' .git not exist, cannot found commit info, e: {}', e)
+            }
+        } from sourceSets.main.output
+
+        doLast {
+            copy {
+                from configurations.runtimeClasspath
+                into "dist/lib"
+            }
+            copy {
+                from file("build/libs/")
+                into "dist/apps"
+            }
+        }
+    }
+}
+
+dependencies {
+    compile project(":code-gen-v2")
+    compile project(":code-gen-v3")
+}
+
+googleJavaFormat {
+    toolVersion = '1.7'
+    options style: 'AOSP'
+    source = sourceSets*.allJava
+    include '**/*.java'
+}
+
+configurations.all {
+    resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
+    exclude group:'ch.qos.logback', module: 'logback-classic'
+    exclude group: 'io.zipkin.brave', module: 'brave-tests'
+}
+
+configurations {
+    integrationTestImplementation.extendsFrom testImplementation
+    integrationTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+
+javadoc {
+    options.addStringOption('Xdoclint:none', '-quiet')
+    options.addStringOption('encoding', 'UTF-8')
+    options.addStringOption('charSet', 'UTF-8')
+}
+
+task sourcesJar(type: Jar) {
+    from sourceSets.main.allJava
+    archiveClassifier = 'sources'
+}
+
+task javadocJar(type: Jar) {
+    from javadoc
+    archiveClassifier = 'javadoc'
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+
+            artifactId "bcos-" + project.name
+            groupId project.group
+            version project.version
+
+            from components.java
+            artifact sourcesJar
+            artifact javadocJar
+            pom {
+                name = 'fisco-bcos'
+                description = 'fisco-bcos ABI code generator.'
+                url = 'http://www.fisco-bcos.org'
+
+                licenses {
+                    license {
+                        name = 'The Apache License, Version 2.0'
+                        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'zhangsan'
+                        name = 'zhangsan'
+                        email = 'zhangsan@example.com'
+                    }
+                }
+                scm {
+                    connection = 'https://github.com/FISCO-BCOS/ABICodeGenerator.git'
+                    url = 'https://github.com/FISCO-BCOS/ABICodeGenerator.git'
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            def releasesRepoURL = "https://oss.sonatype.org/service/local/staging/deploy/maven2"
+            def snapshotsRepoURL = "https://oss.sonatype.org/content/repositories/snapshots"
+            url = !version.endsWith("SNAPSHOT") ? releasesRepoURL : snapshotsRepoURL
+
+            credentials {
+                username ossrhUsername
+                password ossrhPassword
+            }
+        }
+    }
+
+    signing {
+        sign publishing.publications.mavenJava
+    }
+}
+
+jar {
+    // destinationDir file('dist/apps')
+    archiveName "bcos-" + project.name + '-' + project.version + '.jar'
+    exclude '**/*.xml'
+    exclude '**/*.properties'
+
+    manifest {
+        try {
+            def repo = grgit.open(currentDir: project.rootDir)
+            if (repo != null) {
+                def date = new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+                def branch = repo.branch.getCurrent().getName()
+                def commit = repo.head().getAbbreviatedId(40)
+
+                attributes(["Implementation-Timestamp": date,
+                            "Git-Branch"              : branch,
+                            "Git-Commit"              : commit
+                ])
+
+                logger.info("  Commit : ")
+                logger.info("  => date: {}", date)
+                logger.info("  => branch: {}", branch)
+                logger.info("  => commit: {}", commit)
+            }
+        } catch (Exception e) {
+            logger.warn(' .git not exist, cannot found commit info, e: {}', e)
+        }
+    } from sourceSets.main.output
+
+    doLast {
+        copy {
+            from destinationDirectory
+            into 'dist/apps'
+        }
+        copy {
+            from configurations.runtimeClasspath
+            into 'dist/lib'
+        }
+        copy {
+            from file('src/test/resources/log4j.properties')
+            into 'dist/conf'
+        }
+    }
+}
+
+task listJars(description: 'Display all compile jars.')  {
+    configurations.compile.each { File file -> println file.name }
+}
