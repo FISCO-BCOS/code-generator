@@ -22,10 +22,11 @@ import java.util.Arrays;
 import java.util.List;
 import org.fisco.bcos.codegen.v3.exceptions.CodeGenException;
 import org.fisco.bcos.sdk.v3.codec.wrapper.ABIDefinition;
+import org.fisco.bcos.sdk.v3.utils.ObjectMapperFactory;
 
 public final class CodeGenUtils {
 
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final ObjectMapper objectMapper = ObjectMapperFactory.getObjectMapper();
 
     public static String parsePositionalArg(String[] args, int idx) {
         if (args != null && args.length > idx) {
