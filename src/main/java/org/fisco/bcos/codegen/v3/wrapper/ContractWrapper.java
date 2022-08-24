@@ -299,14 +299,35 @@ public class ContractWrapper {
             final ABIDefinition.NamedType component = components.get(i);
             stringBuilder.append(i > 0 ? "," : "");
             if (useNativeJavaTypes) {
-                stringBuilder.append(
-                        !component.getType().startsWith("tuple")
-                                ? "new "
-                                        + buildTypeName(component.getType())
-                                        + "("
-                                        + component.getName()
-                                        + ")"
-                                : component.getName());
+                String state = "";
+                if (component.getType().startsWith("tuple")) {
+                    // if struct
+                    state = component.getName();
+                } else if (component.getType().endsWith("]")) {
+                    // if list
+                    ParameterizedTypeName typeName =
+                            (ParameterizedTypeName) buildTypeName(component.getType());
+                    TypeName argumentType = typeName.typeArguments.get(0);
+                    state =
+                            "new "
+                                    + buildTypeName(component.getType())
+                                    + "("
+                                    + argumentType.toString()
+                                    + ".class, "
+                                    + component.getName()
+                                    + ".stream().map("
+                                    + argumentType
+                                    + "::new).collect(java.util.stream.Collectors.toList())"
+                                    + ")";
+                } else {
+                    state =
+                            "new "
+                                    + buildTypeName(component.getType())
+                                    + "("
+                                    + component.getName()
+                                    + ")";
+                }
+                stringBuilder.append(state);
             } else {
                 stringBuilder.append(component.getName());
             }
@@ -382,6 +403,7 @@ public class ContractWrapper {
                                             + ")");
 
             for (ABIDefinition.NamedType component : namedType.getComponents()) {
+                String getValue = ".getValue()";
                 if (component.getType().equals("tuple")) {
                     final TypeName typeName = structClassNameMap.get(component.structIdentifier());
                     builder.addField(typeName, component.getName(), Modifier.PUBLIC);
@@ -393,6 +415,21 @@ public class ContractWrapper {
                     builder.addField(typeName, component.getName(), Modifier.PUBLIC);
                     constructorBuilder.addParameter(typeName, component.getName());
                     nativeConstructorBuilder.addParameter(typeName, component.getName());
+
+                    getValue = "";
+                } else if (component.getType().endsWith("]")) {
+                    final TypeName typeName = buildTypeName(component.getType());
+                    final TypeName nativeTypeName = getNativeType(typeName);
+                    builder.addField(nativeTypeName, component.getName(), Modifier.PUBLIC);
+                    constructorBuilder.addParameter(typeName, component.getName());
+                    nativeConstructorBuilder.addParameter(nativeTypeName, component.getName());
+
+                    ParameterizedTypeName parameterizedTypeName = (ParameterizedTypeName) typeName;
+                    TypeName argumentType = parameterizedTypeName.typeArguments.get(0);
+                    getValue +=
+                            ".stream().map("
+                                    + argumentType
+                                    + "::getValue).collect(java.util.stream.Collectors.toList())";
                 } else {
                     final TypeName typeName = buildTypeName(component.getType());
                     final TypeName nativeTypeName = getNativeType(typeName);
@@ -409,7 +446,7 @@ public class ContractWrapper {
                                 + component.getName()
                                 + (structClassNameMap.keySet().stream()
                                                 .noneMatch(i -> i == component.structIdentifier())
-                                        ? ".getValue()"
+                                        ? getValue
                                         : ""));
             }
 
@@ -467,13 +504,8 @@ public class ContractWrapper {
                             if (!structMap.containsKey(structIdentifier)) {
                                 structMap.put(structIdentifier, namedType);
                             }
-                            extractNested(namedType).stream()
-                                    .filter(this::isStructType)
-                                    .forEach(
-                                            nestedNamedType ->
-                                                    structMap.put(
-                                                            nestedNamedType.structIdentifier(),
-                                                            nestedNamedType));
+                            // Note: structA in structB, structA must exist in struct map, so no
+                            // need to exact struct again
                         });
 
         return structMap.values().stream()
@@ -711,7 +743,12 @@ public class ContractWrapper {
                 typeName = structClassNameMap.get(namedTypes.get(i).structIdentifier());
             } else if (namedTypes.get(i).getType().startsWith("tuple")
                     && namedTypes.get(i).getType().contains("[")) {
-                typeName = buildStructArrayTypeName(namedTypes.get(i));
+                TypeName argument =
+                        ((ParameterizedTypeName) buildStructArrayTypeName(namedTypes.get(i)))
+                                .typeArguments.get(0);
+                typeName =
+                        ParameterizedTypeName.get(
+                                ClassName.get(List.class), ClassName.get("", argument.toString()));
             } else {
                 typeName = getNativeType(inputParameterTypes.get(i).type);
             }
@@ -992,7 +1029,6 @@ public class ContractWrapper {
         } else {
             this.buildTransactionFunction(functionDefinition, methodBuilder, inputParams);
         }
-
         return methodBuilder.build();
     }
 
@@ -1184,7 +1220,12 @@ public class ContractWrapper {
                 nativeReturnTypeName = structClassNameMap.get(outputType.structIdentifier());
             } else if (outputType.getType().startsWith("tuple")
                     && outputType.getType().contains("[")) {
-                nativeReturnTypeName = buildStructArrayTypeName(outputType);
+                TypeName argument =
+                        ((ParameterizedTypeName) buildStructArrayTypeName(outputType))
+                                .typeArguments.get(0);
+                nativeReturnTypeName =
+                        ParameterizedTypeName.get(
+                                ClassName.get(List.class), ClassName.get("", argument.toString()));
             } else {
                 nativeReturnTypeName = this.getWrapperRawType(typeName);
             }
@@ -1221,6 +1262,10 @@ public class ContractWrapper {
                 callCode.addStatement("return convertToNative(result)");
                 methodBuilder.returns(nativeReturnTypeName).addCode(callCode.build());
             } else {
+                if (outputType.getType().startsWith("tuple")
+                        && outputType.getType().contains("[")) {
+                    nativeReturnTypeName = ClassName.get(List.class);
+                }
                 methodBuilder.addStatement(
                         "return executeCallWithSingleValueReturn(function, $T.class)",
                         nativeReturnTypeName);
