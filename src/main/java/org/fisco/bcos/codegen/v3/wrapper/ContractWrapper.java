@@ -1726,9 +1726,12 @@ public class ContractWrapper {
         resultStringSimple += ".getValue()";
 
         String resultStringNativeList = "\nconvertToNative(($T) results.get($L).getValue())";
+        String dynamicResultStringList =
+                "\nnew DynamicArray<>($T.class,($T) results.get($L).getValue())";
 
         int size = typeArguments.size();
         ClassName classList = ClassName.get(List.class);
+        ClassName dynamicArray = ClassName.get(DynamicArray.class);
 
         for (int i = 0; i < size; i++) {
             TypeName param = outputParameterTypes.get(i);
@@ -1746,6 +1749,16 @@ public class ContractWrapper {
                     convertTo =
                             ParameterizedTypeName.get(classList, oldContainer.typeArguments.get(0));
                     resultString = resultStringNativeList;
+                }
+                if (newContainer.rawType.compareTo(dynamicArray) == 0
+                        && newContainer.typeArguments.size() == 1) {
+                    resultString = dynamicResultStringList;
+                    convertTo =
+                            ParameterizedTypeName.get(classList, oldContainer.typeArguments.get(0));
+                    tupleConstructor.add(
+                            resultString, oldContainer.typeArguments.get(0), convertTo, i);
+                    tupleConstructor.add(i < size - 1 ? ", " : ");\n");
+                    continue;
                 }
             }
 
