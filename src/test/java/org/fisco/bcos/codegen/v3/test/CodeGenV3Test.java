@@ -72,6 +72,13 @@ public class CodeGenV3Test {
         codeGenTest(ABI_FILE, CONTRACT_NAME);
     }
 
+    @Test
+    public void voteABICodeGen() throws IOException {
+        final String ABI_FILE = "AnonymousVoting.abi";
+        final String CONTRACT_NAME = "AnonymousVoting";
+        codeGenTest(ABI_FILE, CONTRACT_NAME);
+    }
+
     private void codeGenTest(String abiFileName, String contractName) throws IOException {
         String abiFile = CodeGenV3Test.class.getClassLoader().getResource(abiFileName).getPath();
         String javaOutPut = new File(abiFile).getParent() + File.separator + JAVA_OUTPUT_DIR;
