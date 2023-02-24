@@ -857,8 +857,7 @@ public class ContractWrapper {
                         }
 
                         TypeName innerTypeName = typeArguments.get(0);
-                        componentType =
-                                ((ParameterizedTypeName) parameterSpec.type).rawType.toString();
+                        componentType = ((ParameterizedTypeName) typeName).rawType.toString();
                         parameterSpecType =
                                 ((ParameterizedTypeName) parameterSpec.type).rawType
                                         + "<"
@@ -1146,6 +1145,7 @@ public class ContractWrapper {
         this.buildTupleResultContainer0(
                 methodBuilder,
                 parameterizedTupleType,
+                inputTypes,
                 buildTypeNames(functionDefinition.getInputs()));
 
         return methodBuilder.build();
@@ -1196,6 +1196,7 @@ public class ContractWrapper {
         this.buildTupleResultContainer0(
                 methodBuilder,
                 parameterizedTupleType,
+                outputTypes,
                 buildTypeNames(functionDefinition.getOutputs()));
 
         return methodBuilder.build();
@@ -1772,6 +1773,7 @@ public class ContractWrapper {
     private void buildTupleResultContainer0(
             MethodSpec.Builder methodBuilder,
             ParameterizedTypeName tupleType,
+            List<ABIDefinition.NamedType> namedTypes,
             List<TypeName> outputParameterTypes) {
 
         List<TypeName> typeArguments = tupleType.typeArguments;
@@ -1779,18 +1781,25 @@ public class ContractWrapper {
         CodeBlock.Builder codeBuilder = CodeBlock.builder();
 
         String resultStringSimple = "\n($T) results.get($L)";
-        resultStringSimple += ".getValue()";
+        String getValueString = ".getValue()";
 
         String resultStringNativeList = "\nconvertToNative(($T) results.get($L).getValue())";
+        String dynamicResultStringList =
+                "\nnew DynamicArray<>($T.class,($T) results.get($L).getValue())";
 
         int size = typeArguments.size();
         ClassName classList = ClassName.get(List.class);
+        ClassName dynamicArray = ClassName.get(DynamicArray.class);
+        ClassName staticArray = ClassName.get(StaticArray.class);
 
         for (int i = 0; i < size; i++) {
             TypeName param = outputParameterTypes.get(i);
             TypeName convertTo = typeArguments.get(i);
-
+            ABIDefinition.NamedType namedType = namedTypes.get(i);
             String resultString = resultStringSimple;
+            if (!namedType.getType().contains("tuple")) {
+                resultString += getValueString;
+            }
 
             // If we use native java types we need to convert
             // elements of arrays to native java types too
@@ -1802,6 +1811,16 @@ public class ContractWrapper {
                     convertTo =
                             ParameterizedTypeName.get(classList, oldContainer.typeArguments.get(0));
                     resultString = resultStringNativeList;
+                }
+                if ((newContainer.rawType.compareTo(dynamicArray) == 0
+                                || newContainer.rawType.compareTo(staticArray) == 0)
+                        && newContainer.typeArguments.size() == 1) {
+                    resultString = dynamicResultStringList;
+                    convertTo =
+                            ParameterizedTypeName.get(classList, oldContainer.typeArguments.get(0));
+                    codeBuilder.add(resultString, oldContainer.typeArguments.get(0), convertTo, i);
+                    codeBuilder.add(i < size - 1 ? ", " : "\n");
+                    continue;
                 }
             }
 
