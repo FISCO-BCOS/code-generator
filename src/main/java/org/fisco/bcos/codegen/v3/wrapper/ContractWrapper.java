@@ -50,6 +50,7 @@ import org.fisco.bcos.sdk.v3.crypto.keypair.CryptoKeyPair;
 import org.fisco.bcos.sdk.v3.eventsub.EventSubCallback;
 import org.fisco.bcos.sdk.v3.model.CryptoType;
 import org.fisco.bcos.sdk.v3.model.TransactionReceipt;
+import org.fisco.bcos.sdk.v3.model.callback.CallCallback;
 import org.fisco.bcos.sdk.v3.model.callback.TransactionCallback;
 import org.fisco.bcos.sdk.v3.transaction.model.exception.ContractException;
 import org.fisco.bcos.sdk.v3.utils.Collection;
@@ -261,11 +262,10 @@ public class ContractWrapper {
             if (functionDefinition.getType().equals("function")) {
                 MethodSpec ms = this.buildFunction(functionDefinition);
                 methodSpecs.add(ms);
+                MethodSpec msCallback = this.buildFunctionWithCallback(functionDefinition);
+                methodSpecs.add(msCallback);
 
                 if (!functionDefinition.isConstant()) {
-                    MethodSpec msCallback = this.buildFunctionWithCallback(functionDefinition);
-                    methodSpecs.add(msCallback);
-
                     MethodSpec msSeq = this.buildFunctionSignedTransaction(functionDefinition);
                     methodSpecs.add(msSeq);
 
@@ -1061,7 +1061,8 @@ public class ContractWrapper {
 
         if (functionDefinition.isConstant()) {
             String inputParams = this.addParameters(methodBuilder, functionDefinition.getInputs());
-            this.buildConstantFunction(
+            methodBuilder.addParameter(CallCallback.class, "callback");
+            this.buildConstantFunctionWithCallback(
                     functionDefinition, methodBuilder, outputParameterTypes, inputParams);
         } else {
             String inputParams = this.addParameters(methodBuilder, functionDefinition.getInputs());
@@ -1297,6 +1298,37 @@ public class ContractWrapper {
 
             this.buildTupleResultContainer(
                     methodBuilder, parameterizedTupleType, outputParameterTypes);
+        }
+    }
+
+    private void buildConstantFunctionWithCallback(
+            ABIDefinition functionDefinition,
+            MethodSpec.Builder methodBuilder,
+            List<TypeName> outputParameterTypes,
+            String inputParams) {
+        String functionName = functionDefinition.getName();
+        methodBuilder.addException(ContractException.class);
+        if (outputParameterTypes.isEmpty()) {
+            methodBuilder.addStatement(
+                    "throw new RuntimeException"
+                            + "(\"cannot call constant function with void return type\")");
+        } else {
+            List<TypeName> returnTypes = new ArrayList<>();
+            for (int i = 0; i < functionDefinition.getOutputs().size(); ++i) {
+                ABIDefinition.NamedType outputType = functionDefinition.getOutputs().get(i);
+                if (outputType.getType().equals("tuple")) {
+                    returnTypes.add(structClassNameMap.get(outputType.structIdentifier()));
+                } else if (outputType.getType().startsWith("tuple")
+                        && outputType.getType().contains("[")) {
+                    returnTypes.add(buildStructArrayTypeName(outputType));
+                } else {
+                    returnTypes.add(getNativeType(outputParameterTypes.get(i)));
+                }
+            }
+
+            buildVariableLengthReturnFunctionConstructor(
+                    methodBuilder, functionName, inputParams, outputParameterTypes);
+            methodBuilder.addStatement("asyncExecuteCall(function, callback)");
         }
     }
 
