@@ -30,7 +30,7 @@ ext {
     junitVersion = '4.13.2'
     commonsLang3Version = '3.12.0'
 
-    javaSDKVersion3 = "3.2.0"
+    javaSDKVersion3 = "3.3.0-SNAPSHOT"
     javaSDKVersion2 = "2.9.1"
     slf4jVersion = "1.7.32"
 }
