@@ -97,6 +97,8 @@ public class ContractWrapper {
     private static final HashMap<Integer, TypeName> structClassNameMap = new HashMap<>();
     private static final List<ABIDefinition.NamedType> structsNamedTypeList = new ArrayList<>();
 
+    private boolean enableAsyncCall = false;
+
     public ContractWrapper(boolean isWasm) {
         this.isWasm = isWasm;
     }
@@ -107,8 +109,10 @@ public class ContractWrapper {
             String smBin,
             String abi,
             String destinationDir,
-            String basePackageName)
+            String basePackageName,
+            boolean enableAsyncCall)
             throws IOException, ClassNotFoundException, UnsupportedOperationException {
+        this.enableAsyncCall = enableAsyncCall;
         String[] nameParts = contractName.split("_");
         for (int i = 0; i < nameParts.length; ++i) {
             nameParts[i] = StringUtils.capitaliseFirstLetter(nameParts[i]);
@@ -262,13 +266,15 @@ public class ContractWrapper {
             if (functionDefinition.getType().equals("function")) {
                 MethodSpec ms = this.buildFunction(functionDefinition);
                 methodSpecs.add(ms);
-                MethodSpec msCallback = this.buildFunctionWithCallback(functionDefinition);
-                methodSpecs.add(msCallback);
-
+                if (functionDefinition.isConstant() && enableAsyncCall) {
+                    MethodSpec msCallback = this.buildFunctionWithCallback(functionDefinition);
+                    methodSpecs.add(msCallback);
+                }
                 if (!functionDefinition.isConstant()) {
                     MethodSpec msSeq = this.buildFunctionSignedTransaction(functionDefinition);
                     methodSpecs.add(msSeq);
-
+                    MethodSpec msCallback = this.buildFunctionWithCallback(functionDefinition);
+                    methodSpecs.add(msCallback);
                     boolean isOverLoad =
                             isOverLoadFunction(functionDefinition.getName(), functionDefinitions);
                     if (!functionDefinition.getInputs().isEmpty()) {

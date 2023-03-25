@@ -52,6 +52,8 @@ public class ContractGenerator {
     private final File destinationDir;
     private String basePackageName;
 
+    private boolean enableAsyncCall = false;
+
     public ContractGenerator(
             File binFile,
             File smBinFile,
@@ -63,6 +65,17 @@ public class ContractGenerator {
         this.abiFile = abiFile;
         this.destinationDir = destinationDir;
         this.basePackageName = basePackageName;
+    }
+
+    public ContractGenerator(
+            File binFile,
+            File smBinFile,
+            File abiFile,
+            File destinationDir,
+            String basePackageName,
+            boolean enableAsyncCall) {
+        this(binFile, smBinFile, abiFile, destinationDir, basePackageName);
+        this.enableAsyncCall = enableAsyncCall;
     }
 
     public void generateJavaFiles() throws CodeGenException, IOException, ClassNotFoundException {
@@ -89,7 +102,8 @@ public class ContractGenerator {
                         new String(smBinary),
                         new String(abiBytes),
                         destinationDir.toString(),
-                        basePackageName);
+                        basePackageName,
+                        enableAsyncCall);
     }
 
     private byte[] calculateWasmBytes(byte[] binary) throws IOException {

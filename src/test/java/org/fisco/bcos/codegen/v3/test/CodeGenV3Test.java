@@ -91,12 +91,19 @@ public class CodeGenV3Test {
         String javaOutPut = new File(abiFile).getParent() + File.separator + JAVA_OUTPUT_DIR;
         CodeGenMain.main(
                 Arrays.asList(
-                                "-v", "V3",
-                                "-a", abiFile,
-                                "-b", abiFile,
-                                "-s", abiFile,
-                                "-p", DEFAULT_PACKAGE,
-                                "-o", javaOutPut)
+                                "-v",
+                                "V3",
+                                "-a",
+                                abiFile,
+                                "-b",
+                                abiFile,
+                                "-s",
+                                abiFile,
+                                "-p",
+                                DEFAULT_PACKAGE,
+                                "-o",
+                                javaOutPut,
+                                "-e")
                         .toArray(new String[0]));
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
