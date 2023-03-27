@@ -63,7 +63,7 @@ public class ContractWrapper {
 
     private static final Logger logger = LoggerFactory.getLogger(ContractWrapper.class);
 
-    private static final int MAX_BIN_SIZE = 0x40000;
+    private static final int MAX_BIN_SIZE = 0x400000;
     private static final int MAX_FIELD = 8 * 1024;
 
     private static final String BINARY_ARRAY_NAME = "BINARY_ARRAY";
