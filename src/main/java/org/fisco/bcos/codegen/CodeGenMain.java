@@ -102,6 +102,11 @@ public class CodeGenMain {
                 required = true)
         private String packageName;
 
+        @Option(
+                names = {"-e", "--enableAsyncCall"},
+                description = "enable async call.")
+        private boolean enableAsyncCall = false;
+
         @Override
         public void run() {
             if (version.equals(Version.V2)) {
@@ -115,7 +120,12 @@ public class CodeGenMain {
             } else if (version.equals(Version.V3)) {
                 try {
                     new org.fisco.bcos.codegen.v3.wrapper.ContractGenerator(
-                                    binFile, smBinFile, abiFile, destinationFileDir, packageName)
+                                    binFile,
+                                    smBinFile,
+                                    abiFile,
+                                    destinationFileDir,
+                                    packageName,
+                                    enableAsyncCall)
                             .generateJavaFiles();
                 } catch (Exception e) {
                     org.fisco.bcos.codegen.v3.utils.CodeGenUtils.exitError(e);

@@ -59,6 +59,13 @@ public class CodeGenV3Test {
     }
 
     @Test
+    public void helloCodeGen() throws IOException {
+        final String COMPLEX_ABI_FILE = "HelloWorld.abi";
+        final String COMPLEX_NAME = "HelloWorld";
+        codeGenTest(COMPLEX_ABI_FILE, COMPLEX_NAME);
+    }
+
+    @Test
     public void complexABICodeGen() throws IOException {
         final String COMPLEX_ABI_FILE = "ComplexCodecTest.abi";
         final String COMPLEX_NAME = "ComplexCodecTest";
@@ -86,17 +93,53 @@ public class CodeGenV3Test {
         codeGenTest(ABI_FILE, CONTRACT_NAME);
     }
 
+    @Test
+    public void weidABICodeGen() throws IOException {
+        final String ABI_FILE = "Weid.abi";
+        final String CONTRACT_NAME = "Weid";
+        codeGenTest(ABI_FILE, CONTRACT_NAME);
+    }
+
+    @Test
+    public void liquidCodeTestCodeGen() throws IOException {
+        final String ABI_FILE = "codec_test.abi";
+        final String CONTRACT_NAME = "CodecTest";
+        final String codeFilePath = "hello_world.wasm";
+        codeGenTest(ABI_FILE, codeFilePath, CONTRACT_NAME);
+    }
+
+    @Test
+    public void liquidComplexCodeTestCodeGen() throws IOException {
+        final String ABI_FILE = "complex_codec_test.abi";
+        final String CONTRACT_NAME = "ComplexCodecTest";
+        final String codeFilePath = "hello_world.wasm";
+        codeGenTest(ABI_FILE, codeFilePath, CONTRACT_NAME);
+    }
+
     private void codeGenTest(String abiFileName, String contractName) throws IOException {
+        codeGenTest(abiFileName, abiFileName, contractName);
+    }
+
+    private void codeGenTest(String abiFileName, String codeFilePath, String contractName)
+            throws IOException {
         String abiFile = CodeGenV3Test.class.getClassLoader().getResource(abiFileName).getPath();
+        String binFile = CodeGenV3Test.class.getClassLoader().getResource(codeFilePath).getPath();
         String javaOutPut = new File(abiFile).getParent() + File.separator + JAVA_OUTPUT_DIR;
         CodeGenMain.main(
                 Arrays.asList(
-                                "-v", "V3",
-                                "-a", abiFile,
-                                "-b", abiFile,
-                                "-s", abiFile,
-                                "-p", DEFAULT_PACKAGE,
-                                "-o", javaOutPut)
+                                "-v",
+                                "V3",
+                                "-a",
+                                abiFile,
+                                "-b",
+                                binFile,
+                                "-s",
+                                binFile,
+                                "-p",
+                                DEFAULT_PACKAGE,
+                                "-o",
+                                javaOutPut,
+                                "-e")
                         .toArray(new String[0]));
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
