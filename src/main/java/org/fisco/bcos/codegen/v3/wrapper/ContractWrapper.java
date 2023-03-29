@@ -383,7 +383,11 @@ public class ContractWrapper {
                 if (isWasm) {
                     structName = internalType.substring(internalType.lastIndexOf(".") + 1);
                 } else {
-                    structName = internalType.substring(internalType.lastIndexOf(" ") + 1);
+                    if (internalType.contains(".")) {
+                        structName = internalType.substring(internalType.lastIndexOf(".") + 1);
+                    } else {
+                        structName = internalType.substring(internalType.lastIndexOf(" ") + 1);
+                    }
                 }
             }
 
