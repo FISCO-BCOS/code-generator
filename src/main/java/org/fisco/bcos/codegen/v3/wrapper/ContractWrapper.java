@@ -514,8 +514,17 @@ public class ContractWrapper {
                             if (!structMap.containsKey(structIdentifier)) {
                                 structMap.put(structIdentifier, namedType);
                             }
-                            // Note: structA in structB, structA must exist in struct map, so no
-                            // need to exact struct again
+                            extractNested(namedType).stream()
+                                    .filter(this::isStructType)
+                                    .forEach(
+                                            nestedNamedType -> {
+                                                if (!structMap.containsKey(
+                                                        nestedNamedType.structIdentifier())) {
+                                                    structMap.put(
+                                                            nestedNamedType.structIdentifier(),
+                                                            nestedNamedType);
+                                                }
+                                            });
                         });
 
         return structMap.values().stream()

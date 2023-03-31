@@ -104,7 +104,7 @@ public class SolidityContractWrapper {
     private static final Pattern pattern = Pattern.compile(regex);
 
     private static final String TUPLE_PACKAGE_NAME =
-            "org.fisco.bcos.sdk.codec.datatypes.generated.tuples.generated";
+            "org.fisco.bcos.sdk.abi.datatypes.generated.tuples.generated";
 
     private static final HashMap<Integer, TypeName> structClassNameMap = new HashMap<>();
     private static final List<ABIDefinition.NamedType> structsNamedTypeList = new ArrayList<>();
@@ -569,9 +569,7 @@ public class SolidityContractWrapper {
                             + parameterSpecType
                             + "(\n"
                             + "        "
-                            + componentType
-                            + ".class,\n"
-                            + "        org.fisco.bcos.sdk.codec.Utils.typeMap("
+                            + "        org.fisco.bcos.sdk.abi.Utils.typeMap("
                             + parameterSpec.name
                             + ", "
                             + typeMapInput
@@ -1560,8 +1558,11 @@ public class SolidityContractWrapper {
                 if (namedType.getType().equals("tuple[]") && internalType.endsWith("[]")) {
                     internalType = internalType.substring(0, internalType.lastIndexOf("["));
                 }
-
-                structName = internalType.substring(internalType.lastIndexOf(" ") + 1);
+                if (internalType.contains(".")) {
+                    structName = internalType.substring(internalType.lastIndexOf(".") + 1);
+                } else {
+                    structName = internalType.substring(internalType.lastIndexOf(" ") + 1);
+                }
             }
 
             final TypeSpec.Builder builder =
@@ -1586,6 +1587,7 @@ public class SolidityContractWrapper {
                                             + ")");
 
             for (ABIDefinition.NamedType component : namedType.getComponents()) {
+                String getValue = ".getValue()";
                 if (component.getType().equals("tuple")) {
                     final TypeName typeName = structClassNameMap.get(component.structIdentifier());
                     builder.addField(typeName, component.getName(), Modifier.PUBLIC);
@@ -1597,6 +1599,21 @@ public class SolidityContractWrapper {
                     builder.addField(typeName, component.getName(), Modifier.PUBLIC);
                     constructorBuilder.addParameter(typeName, component.getName());
                     nativeConstructorBuilder.addParameter(typeName, component.getName());
+
+                    getValue = "";
+                } else if (component.getType().endsWith("]")) {
+                    final TypeName typeName = buildTypeName(component.getType());
+                    final TypeName nativeTypeName = getNativeType(typeName);
+                    builder.addField(nativeTypeName, component.getName(), Modifier.PUBLIC);
+                    constructorBuilder.addParameter(typeName, component.getName());
+                    nativeConstructorBuilder.addParameter(nativeTypeName, component.getName());
+
+                    ParameterizedTypeName parameterizedTypeName = (ParameterizedTypeName) typeName;
+                    TypeName argumentType = parameterizedTypeName.typeArguments.get(0);
+                    getValue +=
+                            ".stream().map("
+                                    + argumentType
+                                    + "::getValue).collect(java.util.stream.Collectors.toList())";
                 } else {
                     final TypeName typeName = buildTypeName(component.getType());
                     final TypeName nativeTypeName = getNativeType(typeName);
@@ -1613,7 +1630,7 @@ public class SolidityContractWrapper {
                                 + component.getName()
                                 + (structClassNameMap.keySet().stream()
                                                 .noneMatch(i -> i == component.structIdentifier())
-                                        ? ".getValue()"
+                                        ? getValue
                                         : ""));
             }
 
@@ -1656,22 +1673,46 @@ public class SolidityContractWrapper {
                         })
                 .forEach(
                         namedType -> {
-                            int structIdentifier = namedType.structIdentifier();
+                            int structIdentifier = getStructIdentifier(namedType);
                             if (!structMap.containsKey(structIdentifier)) {
                                 structMap.put(structIdentifier, namedType);
                             }
                             extractNested(namedType).stream()
                                     .filter(this::isStructType)
                                     .forEach(
-                                            nestedNamedType ->
+                                            nestedNamedType -> {
+                                                int structIdentifier1 =
+                                                        getStructIdentifier(nestedNamedType);
+                                                if (!structMap.containsKey(structIdentifier1)) {
                                                     structMap.put(
-                                                            nestedNamedType.structIdentifier(),
-                                                            nestedNamedType));
+                                                            structIdentifier1, nestedNamedType);
+                                                }
+                                            });
                         });
 
         return structMap.values().stream()
                 .sorted(Comparator.comparingInt(ABIDefinition.NamedType::nestedness))
                 .collect(Collectors.toList());
+    }
+
+    private static int getStructIdentifier(ABIDefinition.NamedType namedType) {
+        String typeIdentifier =
+                (namedType.getInternalType() == null || namedType.getInternalType().isEmpty())
+                        ? namedType.getType()
+                        : namedType.getInternalType();
+        if (typeIdentifier.endsWith("[]")) {
+            typeIdentifier = typeIdentifier.substring(0, typeIdentifier.indexOf('['));
+        }
+        int structIdentifier =
+                (typeIdentifier
+                                + namedType.getComponents().stream()
+                                        .map(
+                                                nestedNameType ->
+                                                        String.valueOf(
+                                                                nestedNameType.structIdentifier()))
+                                        .collect(Collectors.joining()))
+                        .hashCode();
+        return structIdentifier;
     }
 
     private ABIDefinition.NamedType normalizeNamedType(ABIDefinition.NamedType namedType) {
@@ -1726,14 +1767,33 @@ public class SolidityContractWrapper {
             final ABIDefinition.NamedType component = components.get(i);
             stringBuilder.append(i > 0 ? "," : "");
             if (useNativeJavaTypes) {
-                stringBuilder.append(
-                        !component.getType().startsWith("tuple")
-                                ? "new "
-                                        + buildTypeName(component.getType())
-                                        + "("
-                                        + component.getName()
-                                        + ")"
-                                : component.getName());
+                String state = "";
+                if (component.getType().startsWith("tuple")) {
+                    // if struct
+                    state = component.getName();
+                } else if (component.getType().endsWith("]")) {
+                    // if list
+                    ParameterizedTypeName typeName =
+                            (ParameterizedTypeName) buildTypeName(component.getType());
+                    TypeName argumentType = typeName.typeArguments.get(0);
+                    state =
+                            "new "
+                                    + buildTypeName(component.getType())
+                                    + "("
+                                    + component.getName()
+                                    + ".stream().map("
+                                    + argumentType
+                                    + "::new).collect(java.util.stream.Collectors.toList())"
+                                    + ")";
+                } else {
+                    state =
+                            "new "
+                                    + buildTypeName(component.getType())
+                                    + "("
+                                    + component.getName()
+                                    + ")";
+                }
+                stringBuilder.append(state);
             } else {
                 stringBuilder.append(component.getName());
             }
