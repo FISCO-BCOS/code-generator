@@ -229,9 +229,10 @@ public class ContractWrapper {
                 .build();
     }
 
-    private FieldSpec createEventDefinition(String name, List<NamedTypeName> parameters) {
+    private FieldSpec createEventDefinition(
+            String rawEventName, String name, List<NamedTypeName> parameters) {
 
-        CodeBlock initializer = buildVariableLengthEventInitializer(name, parameters);
+        CodeBlock initializer = buildVariableLengthEventInitializer(rawEventName, parameters);
 
         return FieldSpec.builder(Event.class, this.buildEventDefinitionName(name))
                 .addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
@@ -248,6 +249,20 @@ public class ContractWrapper {
         int count = 0;
         for (ABIDefinition functionDefinition : functionDefinitions) {
             if (!functionDefinition.getType().equals("function")) {
+                continue;
+            }
+
+            if (functionDefinition.getName().equals(name)) {
+                count += 1;
+            }
+        }
+        return count > 1;
+    }
+
+    private static boolean isOverLoadEvent(String name, List<ABIDefinition> functionDefinitions) {
+        int count = 0;
+        for (ABIDefinition functionDefinition : functionDefinitions) {
+            if (!functionDefinition.getType().equals("event")) {
                 continue;
             }
 
@@ -290,7 +305,11 @@ public class ContractWrapper {
                     }
                 }
             } else if (functionDefinition.getType().equals("event")) {
-                methodSpecs.addAll(this.buildEventFunctions(functionDefinition, classBuilder));
+                boolean isOverloadEvent =
+                        isOverLoadEvent(functionDefinition.getName(), functionDefinitions);
+                methodSpecs.addAll(
+                        this.buildEventFunctions(
+                                functionDefinition, classBuilder, isOverloadEvent));
             }
         }
 
@@ -1571,9 +1590,9 @@ public class ContractWrapper {
     }
 
     private List<MethodSpec> buildEventFunctions(
-            ABIDefinition functionDefinition, TypeSpec.Builder classBuilder)
+            ABIDefinition functionDefinition, TypeSpec.Builder classBuilder, boolean isOverload)
             throws ClassNotFoundException {
-        String functionName = functionDefinition.getName();
+        String functionName = getInputOutputFunctionName(functionDefinition, isOverload);
         List<ABIDefinition.NamedType> inputs = functionDefinition.getInputs();
         String responseClassName =
                 StringUtils.capitaliseFirstLetter(functionName) + "EventResponse";
@@ -1619,7 +1638,8 @@ public class ContractWrapper {
             parameters.add(parameter);
         }
 
-        classBuilder.addField(this.createEventDefinition(functionName, parameters));
+        classBuilder.addField(
+                this.createEventDefinition(functionDefinition.getName(), functionName, parameters));
 
         classBuilder.addType(
                 this.buildEventResponseObject(
