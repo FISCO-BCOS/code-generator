@@ -93,7 +93,7 @@ public final class CodeGenUtils {
     }
 
     public static void exitError(Throwable throwable) {
-        System.err.println(throwable.getMessage());
+        throwable.printStackTrace();
         System.exit(1);
     }
 }

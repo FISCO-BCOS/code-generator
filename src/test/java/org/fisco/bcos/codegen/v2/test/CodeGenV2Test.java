@@ -1,4 +1,4 @@
-package org.fisco.bcos.codegen.v3.test;
+package org.fisco.bcos.codegen.v2.test;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -19,7 +19,7 @@ import org.fisco.bcos.codegen.CodeGenMain;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class CodeGenV3Test {
+public class CodeGenV2Test {
     private static final String JAVA_OUTPUT_DIR = "sdk";
     private static final String DEFAULT_PACKAGE = "com";
 
@@ -59,13 +59,6 @@ public class CodeGenV3Test {
     }
 
     @Test
-    public void helloCodeGen() throws IOException {
-        final String COMPLEX_ABI_FILE = "HelloWorld.abi";
-        final String COMPLEX_NAME = "HelloWorld";
-        codeGenTest(COMPLEX_ABI_FILE, COMPLEX_NAME);
-    }
-
-    @Test
     public void complexABICodeGen() throws IOException {
         final String COMPLEX_ABI_FILE = "ComplexCodecTest.abi";
         final String COMPLEX_NAME = "ComplexCodecTest";
@@ -76,13 +69,6 @@ public class CodeGenV3Test {
     public void tableABICodeGen() throws IOException {
         final String ABI_FILE = "Table.abi";
         final String CONTRACT_NAME = "Table";
-        codeGenTest(ABI_FILE, CONTRACT_NAME);
-    }
-
-    @Test
-    public void voteABICodeGen() throws IOException {
-        final String ABI_FILE = "AnonymousVoting.abi";
-        final String CONTRACT_NAME = "AnonymousVoting";
         codeGenTest(ABI_FILE, CONTRACT_NAME);
     }
 
@@ -100,42 +86,14 @@ public class CodeGenV3Test {
         codeGenTest(ABI_FILE, CONTRACT_NAME);
     }
 
-    @Test
-    public void liquidCodeTestCodeGen() throws IOException {
-        final String ABI_FILE = "codec_test.abi";
-        final String CONTRACT_NAME = "CodecTest";
-        final String codeFilePath = "hello_world.wasm";
-        codeGenTest(ABI_FILE, codeFilePath, CONTRACT_NAME);
-    }
-
-    @Test
-    public void liquidComplexCodeTestCodeGen() throws IOException {
-        final String ABI_FILE = "complex_codec_test.abi";
-        final String CONTRACT_NAME = "ComplexCodecTest";
-        final String codeFilePath = "hello_world.wasm";
-        codeGenTest(ABI_FILE, codeFilePath, CONTRACT_NAME);
-    }
-
-    @Test
-    public void eventTestCodeGen() throws IOException {
-        final String ABI_FILE = "EventSubDemo.abi";
-        final String CONTRACT_NAME = "EventSubDemo";
-        codeGenTest(ABI_FILE, CONTRACT_NAME);
-    }
-
     private void codeGenTest(String abiFileName, String contractName) throws IOException {
-        codeGenTest(abiFileName, abiFileName, contractName);
-    }
-
-    private void codeGenTest(String abiFileName, String codeFilePath, String contractName)
-            throws IOException {
-        String abiFile = CodeGenV3Test.class.getClassLoader().getResource(abiFileName).getPath();
-        String binFile = CodeGenV3Test.class.getClassLoader().getResource(codeFilePath).getPath();
+        String abiFile = CodeGenV2Test.class.getClassLoader().getResource(abiFileName).getPath();
+        String binFile = CodeGenV2Test.class.getClassLoader().getResource(abiFileName).getPath();
         String javaOutPut = new File(abiFile).getParent() + File.separator + JAVA_OUTPUT_DIR;
         CodeGenMain.main(
                 Arrays.asList(
                                 "-v",
-                                "V3",
+                                "V2",
                                 "-a",
                                 abiFile,
                                 "-b",

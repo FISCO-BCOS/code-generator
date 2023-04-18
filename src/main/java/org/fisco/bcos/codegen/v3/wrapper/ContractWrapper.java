@@ -50,6 +50,7 @@ import org.fisco.bcos.sdk.v3.crypto.keypair.CryptoKeyPair;
 import org.fisco.bcos.sdk.v3.eventsub.EventSubCallback;
 import org.fisco.bcos.sdk.v3.model.CryptoType;
 import org.fisco.bcos.sdk.v3.model.TransactionReceipt;
+import org.fisco.bcos.sdk.v3.model.callback.CallCallback;
 import org.fisco.bcos.sdk.v3.model.callback.TransactionCallback;
 import org.fisco.bcos.sdk.v3.transaction.model.exception.ContractException;
 import org.fisco.bcos.sdk.v3.utils.Collection;
@@ -62,7 +63,7 @@ public class ContractWrapper {
 
     private static final Logger logger = LoggerFactory.getLogger(ContractWrapper.class);
 
-    private static final int MAX_BIN_SIZE = 0x40000;
+    private static final int MAX_BIN_SIZE = 0x400000;
     private static final int MAX_FIELD = 8 * 1024;
 
     private static final String BINARY_ARRAY_NAME = "BINARY_ARRAY";
@@ -96,6 +97,8 @@ public class ContractWrapper {
     private static final HashMap<Integer, TypeName> structClassNameMap = new HashMap<>();
     private static final List<ABIDefinition.NamedType> structsNamedTypeList = new ArrayList<>();
 
+    private boolean enableAsyncCall = false;
+
     public ContractWrapper(boolean isWasm) {
         this.isWasm = isWasm;
     }
@@ -106,8 +109,10 @@ public class ContractWrapper {
             String smBin,
             String abi,
             String destinationDir,
-            String basePackageName)
+            String basePackageName,
+            boolean enableAsyncCall)
             throws IOException, ClassNotFoundException, UnsupportedOperationException {
+        this.enableAsyncCall = enableAsyncCall;
         String[] nameParts = contractName.split("_");
         for (int i = 0; i < nameParts.length; ++i) {
             nameParts[i] = StringUtils.capitaliseFirstLetter(nameParts[i]);
@@ -224,9 +229,10 @@ public class ContractWrapper {
                 .build();
     }
 
-    private FieldSpec createEventDefinition(String name, List<NamedTypeName> parameters) {
+    private FieldSpec createEventDefinition(
+            String rawEventName, String name, List<NamedTypeName> parameters) {
 
-        CodeBlock initializer = buildVariableLengthEventInitializer(name, parameters);
+        CodeBlock initializer = buildVariableLengthEventInitializer(rawEventName, parameters);
 
         return FieldSpec.builder(Event.class, this.buildEventDefinitionName(name))
                 .addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
@@ -253,6 +259,20 @@ public class ContractWrapper {
         return count > 1;
     }
 
+    private static boolean isOverLoadEvent(String name, List<ABIDefinition> functionDefinitions) {
+        int count = 0;
+        for (ABIDefinition functionDefinition : functionDefinitions) {
+            if (!functionDefinition.getType().equals("event")) {
+                continue;
+            }
+
+            if (functionDefinition.getName().equals(name)) {
+                count += 1;
+            }
+        }
+        return count > 1;
+    }
+
     private List<MethodSpec> buildFunctionDefinitions(
             TypeSpec.Builder classBuilder, List<ABIDefinition> functionDefinitions)
             throws ClassNotFoundException {
@@ -261,14 +281,15 @@ public class ContractWrapper {
             if (functionDefinition.getType().equals("function")) {
                 MethodSpec ms = this.buildFunction(functionDefinition);
                 methodSpecs.add(ms);
-
-                if (!functionDefinition.isConstant()) {
+                if (functionDefinition.isConstant() && enableAsyncCall) {
                     MethodSpec msCallback = this.buildFunctionWithCallback(functionDefinition);
                     methodSpecs.add(msCallback);
-
+                }
+                if (!functionDefinition.isConstant()) {
                     MethodSpec msSeq = this.buildFunctionSignedTransaction(functionDefinition);
                     methodSpecs.add(msSeq);
-
+                    MethodSpec msCallback = this.buildFunctionWithCallback(functionDefinition);
+                    methodSpecs.add(msCallback);
                     boolean isOverLoad =
                             isOverLoadFunction(functionDefinition.getName(), functionDefinitions);
                     if (!functionDefinition.getInputs().isEmpty()) {
@@ -284,7 +305,11 @@ public class ContractWrapper {
                     }
                 }
             } else if (functionDefinition.getType().equals("event")) {
-                methodSpecs.addAll(this.buildEventFunctions(functionDefinition, classBuilder));
+                boolean isOverloadEvent =
+                        isOverLoadEvent(functionDefinition.getName(), functionDefinitions);
+                methodSpecs.addAll(
+                        this.buildEventFunctions(
+                                functionDefinition, classBuilder, isOverloadEvent));
             }
         }
 
@@ -377,7 +402,11 @@ public class ContractWrapper {
                 if (isWasm) {
                     structName = internalType.substring(internalType.lastIndexOf(".") + 1);
                 } else {
-                    structName = internalType.substring(internalType.lastIndexOf(" ") + 1);
+                    if (internalType.contains(".")) {
+                        structName = internalType.substring(internalType.lastIndexOf(".") + 1);
+                    } else {
+                        structName = internalType.substring(internalType.lastIndexOf(" ") + 1);
+                    }
                 }
             }
 
@@ -504,8 +533,17 @@ public class ContractWrapper {
                             if (!structMap.containsKey(structIdentifier)) {
                                 structMap.put(structIdentifier, namedType);
                             }
-                            // Note: structA in structB, structA must exist in struct map, so no
-                            // need to exact struct again
+                            extractNested(namedType).stream()
+                                    .filter(this::isStructType)
+                                    .forEach(
+                                            nestedNamedType -> {
+                                                if (!structMap.containsKey(
+                                                        nestedNamedType.structIdentifier())) {
+                                                    structMap.put(
+                                                            nestedNamedType.structIdentifier(),
+                                                            nestedNamedType);
+                                                }
+                                            });
                         });
 
         return structMap.values().stream()
@@ -857,8 +895,7 @@ public class ContractWrapper {
                         }
 
                         TypeName innerTypeName = typeArguments.get(0);
-                        componentType =
-                                ((ParameterizedTypeName) parameterSpec.type).rawType.toString();
+                        componentType = ((ParameterizedTypeName) typeName).rawType.toString();
                         parameterSpecType =
                                 ((ParameterizedTypeName) parameterSpec.type).rawType
                                         + "<"
@@ -1062,7 +1099,8 @@ public class ContractWrapper {
 
         if (functionDefinition.isConstant()) {
             String inputParams = this.addParameters(methodBuilder, functionDefinition.getInputs());
-            this.buildConstantFunction(
+            methodBuilder.addParameter(CallCallback.class, "callback");
+            this.buildConstantFunctionWithCallback(
                     functionDefinition, methodBuilder, outputParameterTypes, inputParams);
         } else {
             String inputParams = this.addParameters(methodBuilder, functionDefinition.getInputs());
@@ -1146,6 +1184,7 @@ public class ContractWrapper {
         this.buildTupleResultContainer0(
                 methodBuilder,
                 parameterizedTupleType,
+                inputTypes,
                 buildTypeNames(functionDefinition.getInputs()));
 
         return methodBuilder.build();
@@ -1196,6 +1235,7 @@ public class ContractWrapper {
         this.buildTupleResultContainer0(
                 methodBuilder,
                 parameterizedTupleType,
+                outputTypes,
                 buildTypeNames(functionDefinition.getOutputs()));
 
         return methodBuilder.build();
@@ -1296,6 +1336,37 @@ public class ContractWrapper {
 
             this.buildTupleResultContainer(
                     methodBuilder, parameterizedTupleType, outputParameterTypes);
+        }
+    }
+
+    private void buildConstantFunctionWithCallback(
+            ABIDefinition functionDefinition,
+            MethodSpec.Builder methodBuilder,
+            List<TypeName> outputParameterTypes,
+            String inputParams) {
+        String functionName = functionDefinition.getName();
+        methodBuilder.addException(ContractException.class);
+        if (outputParameterTypes.isEmpty()) {
+            methodBuilder.addStatement(
+                    "throw new RuntimeException"
+                            + "(\"cannot call constant function with void return type\")");
+        } else {
+            List<TypeName> returnTypes = new ArrayList<>();
+            for (int i = 0; i < functionDefinition.getOutputs().size(); ++i) {
+                ABIDefinition.NamedType outputType = functionDefinition.getOutputs().get(i);
+                if (outputType.getType().equals("tuple")) {
+                    returnTypes.add(structClassNameMap.get(outputType.structIdentifier()));
+                } else if (outputType.getType().startsWith("tuple")
+                        && outputType.getType().contains("[")) {
+                    returnTypes.add(buildStructArrayTypeName(outputType));
+                } else {
+                    returnTypes.add(getNativeType(outputParameterTypes.get(i)));
+                }
+            }
+
+            buildVariableLengthReturnFunctionConstructor(
+                    methodBuilder, functionName, inputParams, outputParameterTypes);
+            methodBuilder.addStatement("asyncExecuteCall(function, callback)");
         }
     }
 
@@ -1519,9 +1590,9 @@ public class ContractWrapper {
     }
 
     private List<MethodSpec> buildEventFunctions(
-            ABIDefinition functionDefinition, TypeSpec.Builder classBuilder)
+            ABIDefinition functionDefinition, TypeSpec.Builder classBuilder, boolean isOverload)
             throws ClassNotFoundException {
-        String functionName = functionDefinition.getName();
+        String functionName = getInputOutputFunctionName(functionDefinition, isOverload);
         List<ABIDefinition.NamedType> inputs = functionDefinition.getInputs();
         String responseClassName =
                 StringUtils.capitaliseFirstLetter(functionName) + "EventResponse";
@@ -1567,7 +1638,8 @@ public class ContractWrapper {
             parameters.add(parameter);
         }
 
-        classBuilder.addField(this.createEventDefinition(functionName, parameters));
+        classBuilder.addField(
+                this.createEventDefinition(functionDefinition.getName(), functionName, parameters));
 
         classBuilder.addType(
                 this.buildEventResponseObject(
@@ -1726,9 +1798,12 @@ public class ContractWrapper {
         resultStringSimple += ".getValue()";
 
         String resultStringNativeList = "\nconvertToNative(($T) results.get($L).getValue())";
+        String dynamicResultStringList =
+                "\nnew DynamicArray<>($T.class,($T) results.get($L).getValue())";
 
         int size = typeArguments.size();
         ClassName classList = ClassName.get(List.class);
+        ClassName dynamicArray = ClassName.get(DynamicArray.class);
 
         for (int i = 0; i < size; i++) {
             TypeName param = outputParameterTypes.get(i);
@@ -1747,6 +1822,16 @@ public class ContractWrapper {
                             ParameterizedTypeName.get(classList, oldContainer.typeArguments.get(0));
                     resultString = resultStringNativeList;
                 }
+                if (newContainer.rawType.compareTo(dynamicArray) == 0
+                        && newContainer.typeArguments.size() == 1) {
+                    resultString = dynamicResultStringList;
+                    convertTo =
+                            ParameterizedTypeName.get(classList, oldContainer.typeArguments.get(0));
+                    tupleConstructor.add(
+                            resultString, oldContainer.typeArguments.get(0), convertTo, i);
+                    tupleConstructor.add(i < size - 1 ? ", " : ");\n");
+                    continue;
+                }
             }
 
             tupleConstructor.add(resultString, convertTo, i);
@@ -1759,6 +1844,7 @@ public class ContractWrapper {
     private void buildTupleResultContainer0(
             MethodSpec.Builder methodBuilder,
             ParameterizedTypeName tupleType,
+            List<ABIDefinition.NamedType> namedTypes,
             List<TypeName> outputParameterTypes) {
 
         List<TypeName> typeArguments = tupleType.typeArguments;
@@ -1766,18 +1852,25 @@ public class ContractWrapper {
         CodeBlock.Builder codeBuilder = CodeBlock.builder();
 
         String resultStringSimple = "\n($T) results.get($L)";
-        resultStringSimple += ".getValue()";
+        String getValueString = ".getValue()";
 
         String resultStringNativeList = "\nconvertToNative(($T) results.get($L).getValue())";
+        String dynamicResultStringList =
+                "\nnew DynamicArray<>($T.class,($T) results.get($L).getValue())";
 
         int size = typeArguments.size();
         ClassName classList = ClassName.get(List.class);
+        ClassName dynamicArray = ClassName.get(DynamicArray.class);
+        ClassName staticArray = ClassName.get(StaticArray.class);
 
         for (int i = 0; i < size; i++) {
             TypeName param = outputParameterTypes.get(i);
             TypeName convertTo = typeArguments.get(i);
-
+            ABIDefinition.NamedType namedType = namedTypes.get(i);
             String resultString = resultStringSimple;
+            if (!namedType.getType().contains("tuple")) {
+                resultString += getValueString;
+            }
 
             // If we use native java types we need to convert
             // elements of arrays to native java types too
@@ -1789,6 +1882,16 @@ public class ContractWrapper {
                     convertTo =
                             ParameterizedTypeName.get(classList, oldContainer.typeArguments.get(0));
                     resultString = resultStringNativeList;
+                }
+                if ((newContainer.rawType.compareTo(dynamicArray) == 0
+                                || newContainer.rawType.compareTo(staticArray) == 0)
+                        && newContainer.typeArguments.size() == 1) {
+                    resultString = dynamicResultStringList;
+                    convertTo =
+                            ParameterizedTypeName.get(classList, oldContainer.typeArguments.get(0));
+                    codeBuilder.add(resultString, oldContainer.typeArguments.get(0), convertTo, i);
+                    codeBuilder.add(i < size - 1 ? ", " : "\n");
+                    continue;
                 }
             }
 
