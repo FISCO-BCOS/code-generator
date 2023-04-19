@@ -1668,7 +1668,8 @@ public class ContractWrapper {
             final NamedTypeName namedTypeName = indexedParameters.get(i);
             String nativeConversion;
             if (structClassNameMap.values().stream()
-                    .noneMatch(name -> name.equals(namedTypeName.getTypeName()))) {
+                            .noneMatch(name -> name.equals(namedTypeName.getTypeName()))
+                    && !namedTypeName.getType().startsWith("tuple[")) {
                 nativeConversion = ".getValue()";
             } else {
                 nativeConversion = "";
@@ -1694,13 +1695,7 @@ public class ContractWrapper {
 
         for (int i = 0; i < nonIndexedParameters.size(); i++) {
             final NamedTypeName namedTypeName = nonIndexedParameters.get(i);
-            final String nativeConversion;
-            if (structClassNameMap.values().stream()
-                    .noneMatch(name -> name.equals(namedTypeName.getTypeName()))) {
-                nativeConversion = ".getValue()";
-            } else {
-                nativeConversion = "";
-            }
+            String result = "$L.$L = ($T) eventValues.getNonIndexedValues().get($L)";
 
             final TypeName typeName;
             if (nonIndexedParameters.get(i).getType().equals("tuple")) {
@@ -1711,12 +1706,13 @@ public class ContractWrapper {
             } else {
                 typeName = getNativeType(nonIndexedParameters.get(i).getTypeName());
             }
+            if (structClassNameMap.values().stream()
+                            .noneMatch(name -> name.equals(namedTypeName.getTypeName()))
+                    && !namedTypeName.getType().startsWith("tuple[")) {
+                result += ".getValue()";
+            }
             builder.addStatement(
-                    "$L.$L = ($T) eventValues.getNonIndexedValues().get($L)" + nativeConversion,
-                    objectName,
-                    nonIndexedParameters.get(i).getName(),
-                    typeName,
-                    i);
+                    result, objectName, nonIndexedParameters.get(i).getName(), typeName, i);
         }
         return builder.build();
     }
