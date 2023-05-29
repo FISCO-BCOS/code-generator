@@ -59,6 +59,13 @@ public class CodeGenV2Test {
     }
 
     @Test
+    public void helloCodeGen() throws IOException {
+        final String COMPLEX_ABI_FILE = "HelloWorld.abi";
+        final String COMPLEX_NAME = "HelloWorld";
+        codeGenTest(COMPLEX_ABI_FILE, COMPLEX_NAME);
+    }
+
+    @Test
     public void complexABICodeGen() throws IOException {
         final String COMPLEX_ABI_FILE = "ComplexCodecTest.abi";
         final String COMPLEX_NAME = "ComplexCodecTest";
@@ -73,6 +80,13 @@ public class CodeGenV2Test {
     }
 
     @Test
+    public void voteABICodeGen() throws IOException {
+        final String ABI_FILE = "AnonymousVoting.abi";
+        final String CONTRACT_NAME = "AnonymousVoting";
+        codeGenTest(ABI_FILE, CONTRACT_NAME);
+    }
+
+    @Test
     public void codecTestABICodeGen() throws IOException {
         final String ABI_FILE = "CodecTest.abi";
         final String CONTRACT_NAME = "CodecTest";
@@ -83,6 +97,14 @@ public class CodeGenV2Test {
     public void weidABICodeGen() throws IOException {
         final String ABI_FILE = "Weid.abi";
         final String CONTRACT_NAME = "Weid";
+        codeGenTest(ABI_FILE, CONTRACT_NAME);
+    }
+
+    // FIXME: v2 event override bug
+    // @Test
+    public void eventTestCodeGen() throws IOException {
+        final String ABI_FILE = "EventSubDemo.abi";
+        final String CONTRACT_NAME = "EventSubDemo";
         codeGenTest(ABI_FILE, CONTRACT_NAME);
     }
 
