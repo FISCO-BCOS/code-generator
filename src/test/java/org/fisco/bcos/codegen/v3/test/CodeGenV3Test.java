@@ -116,6 +116,13 @@ public class CodeGenV3Test {
         codeGenTest(ABI_FILE, codeFilePath, CONTRACT_NAME);
     }
 
+    @Test
+    public void eventTestCodeGen() throws IOException {
+        final String ABI_FILE = "EventSubDemo.abi";
+        final String CONTRACT_NAME = "EventSubDemo";
+        codeGenTest(ABI_FILE, CONTRACT_NAME);
+    }
+
     private void codeGenTest(String abiFileName, String contractName) throws IOException {
         codeGenTest(abiFileName, abiFileName, contractName);
     }

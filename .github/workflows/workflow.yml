@@ -8,10 +8,10 @@ env:
 
 jobs:
   build-ubuntu18:
-    name: build-ubuntu18.04
-    runs-on: ubuntu-18.04
+    name: build-ubuntu22.04
+    runs-on: ubuntu-22.04
     container:
-      image: docker.io/ubuntu:18.04
+      image: docker.io/ubuntu:22.04
       volumes:
         - /__w/code-gen:/__w/code-gen
         - /__w/code-gen/code-gen:/__w/code-gen/code-gen
