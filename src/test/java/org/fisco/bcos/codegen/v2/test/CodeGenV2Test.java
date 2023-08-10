@@ -100,8 +100,23 @@ public class CodeGenV2Test {
         codeGenTest(ABI_FILE, CONTRACT_NAME);
     }
 
-    // FIXME: v2 event override bug
-    // @Test
+    @Test
+    public void StructReqRespCodeGen() throws IOException {
+        // abi from https://github.com/FISCO-BCOS/code-generator/issues/19
+        final String ABI_FILE = "StructReqRespContract.abi";
+        final String CONTRACT_NAME = "StructReqRespContract";
+        codeGenTest(ABI_FILE, CONTRACT_NAME);
+    }
+
+    @Test
+    public void SupplyChainFinCodeGen() throws IOException {
+        // abi from https://github.com/FISCO-BCOS/java-sdk/issues/801
+        final String ABI_FILE = "SupplyChainFin.abi";
+        final String CONTRACT_NAME = "SupplyChainFin";
+        codeGenTest(ABI_FILE, CONTRACT_NAME);
+    }
+
+    @Test
     public void eventTestCodeGen() throws IOException {
         final String ABI_FILE = "EventSubDemo.abi";
         final String CONTRACT_NAME = "EventSubDemo";

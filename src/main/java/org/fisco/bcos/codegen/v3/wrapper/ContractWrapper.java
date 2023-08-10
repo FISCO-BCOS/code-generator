@@ -837,12 +837,21 @@ public class ContractWrapper {
                                         namedType.getInternalType().lastIndexOf(".") + 1,
                                         namedType.getInternalType().indexOf("["));
             } else {
-                structName =
-                        namedType
-                                .getInternalType()
-                                .substring(
-                                        namedType.getInternalType().lastIndexOf(" ") + 1,
-                                        namedType.getInternalType().indexOf("["));
+                if (namedType.getInternalType().contains(".")) {
+                    structName =
+                            namedType
+                                    .getInternalType()
+                                    .substring(
+                                            namedType.getInternalType().lastIndexOf(".") + 1,
+                                            namedType.getInternalType().indexOf("["));
+                } else {
+                    structName =
+                            namedType
+                                    .getInternalType()
+                                    .substring(
+                                            namedType.getInternalType().lastIndexOf(" ") + 1,
+                                            namedType.getInternalType().indexOf("["));
+                }
             }
         }
 
