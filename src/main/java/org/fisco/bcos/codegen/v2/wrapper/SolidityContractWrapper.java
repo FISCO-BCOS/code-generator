@@ -241,9 +241,10 @@ public class SolidityContractWrapper {
                 .build();
     }
 
-    private FieldSpec createEventDefinition(String name, List<NamedTypeName> parameters) {
+    private FieldSpec createEventDefinition(
+            String rawEventName, String name, List<NamedTypeName> parameters) {
 
-        CodeBlock initializer = buildVariableLengthEventInitializer(name, parameters);
+        CodeBlock initializer = buildVariableLengthEventInitializer(rawEventName, parameters);
 
         return FieldSpec.builder(Event.class, buildEventDefinitionName(name))
                 .addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
@@ -260,6 +261,20 @@ public class SolidityContractWrapper {
         int count = 0;
         for (ABIDefinition functionDefinition : functionDefinitions) {
             if (!functionDefinition.getType().equals("function")) {
+                continue;
+            }
+
+            if (functionDefinition.getName().equals(name)) {
+                count += 1;
+            }
+        }
+        return count > 1;
+    }
+
+    private static boolean isOverLoadEvent(String name, List<ABIDefinition> functionDefinitions) {
+        int count = 0;
+        for (ABIDefinition functionDefinition : functionDefinitions) {
+            if (!functionDefinition.getType().equals("event")) {
                 continue;
             }
 
@@ -302,7 +317,11 @@ public class SolidityContractWrapper {
                     }
                 }
             } else if (functionDefinition.getType().equals("event")) {
-                methodSpecs.addAll(buildEventFunctions(functionDefinition, classBuilder));
+                boolean isOverloadEvent =
+                        isOverLoadEvent(functionDefinition.getName(), functionDefinitions);
+
+                methodSpecs.addAll(
+                        buildEventFunctions(functionDefinition, classBuilder, isOverloadEvent));
             }
         }
 
@@ -1209,9 +1228,10 @@ public class SolidityContractWrapper {
     }
 
     private List<MethodSpec> buildEventFunctions(
-            ABIDefinition functionDefinition, TypeSpec.Builder classBuilder)
+            ABIDefinition functionDefinition, TypeSpec.Builder classBuilder, boolean isOverload)
             throws ClassNotFoundException {
-        String functionName = functionDefinition.getName();
+
+        String functionName = getInputOutputFunctionName(functionDefinition, isOverload);
         List<ABIDefinition.NamedType> inputs = functionDefinition.getInputs();
         String responseClassName =
                 StringUtils.capitaliseFirstLetter(functionName) + "EventResponse";
@@ -1255,7 +1275,8 @@ public class SolidityContractWrapper {
             parameters.add(parameter);
         }
 
-        classBuilder.addField(createEventDefinition(functionName, parameters));
+        classBuilder.addField(
+                createEventDefinition(functionDefinition.getName(), functionName, parameters));
 
         classBuilder.addType(
                 buildEventResponseObject(
@@ -1819,12 +1840,21 @@ public class SolidityContractWrapper {
                                             .structIdentifier())
                             .toString();
         } else {
-            structName =
-                    namedType
-                            .getInternalType()
-                            .substring(
-                                    namedType.getInternalType().lastIndexOf(" ") + 1,
-                                    namedType.getInternalType().indexOf("["));
+            if (namedType.getInternalType().contains(".")) {
+                structName =
+                        namedType
+                                .getInternalType()
+                                .substring(
+                                        namedType.getInternalType().lastIndexOf(".") + 1,
+                                        namedType.getInternalType().indexOf("["));
+            } else {
+                structName =
+                        namedType
+                                .getInternalType()
+                                .substring(
+                                        namedType.getInternalType().lastIndexOf(" ") + 1,
+                                        namedType.getInternalType().indexOf("["));
+            }
         }
 
         return ParameterizedTypeName.get(
