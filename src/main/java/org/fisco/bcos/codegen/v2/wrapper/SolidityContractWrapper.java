@@ -241,9 +241,10 @@ public class SolidityContractWrapper {
                 .build();
     }
 
-    private FieldSpec createEventDefinition(String name, List<NamedTypeName> parameters) {
+    private FieldSpec createEventDefinition(
+            String rawEventName, String name, List<NamedTypeName> parameters) {
 
-        CodeBlock initializer = buildVariableLengthEventInitializer(name, parameters);
+        CodeBlock initializer = buildVariableLengthEventInitializer(rawEventName, parameters);
 
         return FieldSpec.builder(Event.class, buildEventDefinitionName(name))
                 .addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
@@ -260,6 +261,20 @@ public class SolidityContractWrapper {
         int count = 0;
         for (ABIDefinition functionDefinition : functionDefinitions) {
             if (!functionDefinition.getType().equals("function")) {
+                continue;
+            }
+
+            if (functionDefinition.getName().equals(name)) {
+                count += 1;
+            }
+        }
+        return count > 1;
+    }
+
+    private static boolean isOverLoadEvent(String name, List<ABIDefinition> functionDefinitions) {
+        int count = 0;
+        for (ABIDefinition functionDefinition : functionDefinitions) {
+            if (!functionDefinition.getType().equals("event")) {
                 continue;
             }
 
@@ -302,7 +317,11 @@ public class SolidityContractWrapper {
                     }
                 }
             } else if (functionDefinition.getType().equals("event")) {
-                methodSpecs.addAll(buildEventFunctions(functionDefinition, classBuilder));
+                boolean isOverloadEvent =
+                        isOverLoadEvent(functionDefinition.getName(), functionDefinitions);
+
+                methodSpecs.addAll(
+                        buildEventFunctions(functionDefinition, classBuilder, isOverloadEvent));
             }
         }
 
@@ -926,7 +945,12 @@ public class SolidityContractWrapper {
                 nativeReturnTypeName = structClassNameMap.get(outputType.structIdentifier());
             } else if (outputType.getType().startsWith("tuple")
                     && outputType.getType().contains("[")) {
-                nativeReturnTypeName = typeName;
+                TypeName argument =
+                        ((ParameterizedTypeName) buildStructArrayTypeName(outputType))
+                                .typeArguments.get(0);
+                nativeReturnTypeName =
+                        ParameterizedTypeName.get(
+                                ClassName.get(List.class), ClassName.get("", argument.toString()));
             } else {
                 nativeReturnTypeName = this.getWrapperRawType(typeName);
             }
@@ -972,14 +996,25 @@ public class SolidityContractWrapper {
                         nativeReturnTypeName);
             }
         } else {
-            List<TypeName> returnTypes = buildReturnTypes(outputParameterTypes);
+            List<TypeName> returnTypes = new ArrayList<>();
+            for (int i = 0; i < functionDefinition.getOutputs().size(); ++i) {
+                ABIDefinition.NamedType outputType = functionDefinition.getOutputs().get(i);
+                if (outputType.getType().equals("tuple")) {
+                    returnTypes.add(structClassNameMap.get(outputType.structIdentifier()));
+                } else if (outputType.getType().startsWith("tuple")
+                        && outputType.getType().contains("[")) {
+                    returnTypes.add(buildStructArrayTypeName(outputType));
+                } else {
+                    returnTypes.add(getNativeType(outputParameterTypes.get(i)));
+                }
+            }
 
             ParameterizedTypeName parameterizedTupleType =
                     ParameterizedTypeName.get(
                             ClassName.get(
                                     "org.fisco.bcos.sdk.abi.datatypes.generated.tuples.generated",
                                     "Tuple" + returnTypes.size()),
-                            returnTypes.toArray(new TypeName[returnTypes.size()]));
+                            returnTypes.toArray(new TypeName[0]));
 
             methodBuilder.returns(parameterizedTupleType);
 
@@ -1067,12 +1102,28 @@ public class SolidityContractWrapper {
 
         builder.addField(TransactionReceipt.Logs.class, "log", Modifier.PUBLIC);
         for (NamedTypeName namedType : indexedParameters) {
-            TypeName typeName = getEventNativeType(namedType.typeName);
+            final TypeName typeName;
+            if (namedType.getType().equals("tuple")) {
+                typeName = structClassNameMap.get(namedType.structIdentifier());
+            } else if (namedType.getType().startsWith("tuple")
+                    && namedType.getType().contains("[")) {
+                typeName = buildStructArrayTypeName(namedType.namedType);
+            } else {
+                typeName = getEventNativeType(namedType.typeName);
+            }
             builder.addField(typeName, namedType.getName(), Modifier.PUBLIC);
         }
 
         for (NamedTypeName namedType : nonIndexedParameters) {
-            TypeName typeName = getNativeType(namedType.typeName);
+            final TypeName typeName;
+            if (namedType.getType().equals("tuple")) {
+                typeName = structClassNameMap.get(namedType.structIdentifier());
+            } else if (namedType.getType().startsWith("tuple")
+                    && namedType.getType().contains("[")) {
+                typeName = buildStructArrayTypeName(namedType.namedType);
+            } else {
+                typeName = getNativeType(namedType.typeName);
+            }
             builder.addField(typeName, namedType.getName(), Modifier.PUBLIC);
         }
 
@@ -1177,9 +1228,10 @@ public class SolidityContractWrapper {
     }
 
     private List<MethodSpec> buildEventFunctions(
-            ABIDefinition functionDefinition, TypeSpec.Builder classBuilder)
+            ABIDefinition functionDefinition, TypeSpec.Builder classBuilder, boolean isOverload)
             throws ClassNotFoundException {
-        String functionName = functionDefinition.getName();
+
+        String functionName = getInputOutputFunctionName(functionDefinition, isOverload);
         List<ABIDefinition.NamedType> inputs = functionDefinition.getInputs();
         String responseClassName =
                 StringUtils.capitaliseFirstLetter(functionName) + "EventResponse";
@@ -1196,6 +1248,15 @@ public class SolidityContractWrapper {
             }
         }
         for (ABIDefinition.NamedType namedType : inputs) {
+            final TypeName typeName;
+            if (namedType.getType().equals("tuple")) {
+                typeName = structClassNameMap.get(namedType.structIdentifier());
+            } else if (namedType.getType().startsWith("tuple")
+                    && namedType.getType().contains("[")) {
+                typeName = buildStructArrayTypeName(namedType);
+            } else {
+                typeName = buildTypeName(namedType.getType());
+            }
             if (namedType.getName() == null || namedType.getName().equals("")) {
                 String paramName = functionName + "Param" + index;
                 while (eventParamNameFilter.contains(paramName)) {
@@ -1205,11 +1266,7 @@ public class SolidityContractWrapper {
                 eventParamNameFilter.add(paramName);
                 namedType.setName(paramName);
             }
-            NamedTypeName parameter =
-                    new NamedTypeName(
-                            namedType.getName(),
-                            buildTypeName(namedType.getType()),
-                            namedType.isIndexed());
+            NamedTypeName parameter = new NamedTypeName(namedType, typeName, namedType.isIndexed());
             if (namedType.isIndexed()) {
                 indexedParameters.add(parameter);
             } else {
@@ -1218,7 +1275,8 @@ public class SolidityContractWrapper {
             parameters.add(parameter);
         }
 
-        classBuilder.addField(createEventDefinition(functionName, parameters));
+        classBuilder.addField(
+                createEventDefinition(functionDefinition.getName(), functionName, parameters));
 
         classBuilder.addType(
                 buildEventResponseObject(
@@ -1240,9 +1298,6 @@ public class SolidityContractWrapper {
             List<NamedTypeName> indexedParameters,
             List<NamedTypeName> nonIndexedParameters,
             boolean flowable) {
-        String nativeConversion;
-
-        nativeConversion = ".getValue()";
 
         CodeBlock.Builder builder = CodeBlock.builder();
         if (flowable) {
@@ -1251,21 +1306,51 @@ public class SolidityContractWrapper {
             builder.addStatement("$L.log = eventValues.getLog()", objectName);
         }
         for (int i = 0; i < indexedParameters.size(); i++) {
+            final NamedTypeName namedTypeName = indexedParameters.get(i);
+            String nativeConversion;
+            if (structClassNameMap.values().stream()
+                            .noneMatch(name -> name.equals(namedTypeName.getTypeName()))
+                    && !namedTypeName.getType().startsWith("tuple[")) {
+                nativeConversion = ".getValue()";
+            } else {
+                nativeConversion = "";
+            }
+            final TypeName typeName;
+            if (namedTypeName.getType().equals("tuple")) {
+                typeName = structClassNameMap.get(namedTypeName.structIdentifier());
+            } else if (namedTypeName.getType().startsWith("tuple")
+                    && namedTypeName.getType().contains("[")) {
+                typeName = buildStructArrayTypeName(namedTypeName.namedType);
+            } else {
+                typeName = getEventNativeType(namedTypeName.getTypeName());
+            }
             builder.addStatement(
                     "$L.$L = ($T) eventValues.getIndexedValues().get($L)" + nativeConversion,
                     objectName,
                     indexedParameters.get(i).getName(),
-                    getEventNativeType(indexedParameters.get(i).getTypeName()),
+                    typeName,
                     i);
         }
 
         for (int i = 0; i < nonIndexedParameters.size(); i++) {
+            final NamedTypeName namedTypeName = nonIndexedParameters.get(i);
+            String result = "$L.$L = ($T) eventValues.getNonIndexedValues().get($L)";
+            final TypeName typeName;
+            if (nonIndexedParameters.get(i).getType().equals("tuple")) {
+                typeName = structClassNameMap.get(namedTypeName.structIdentifier());
+            } else if (nonIndexedParameters.get(i).getType().startsWith("tuple")
+                    && nonIndexedParameters.get(i).getType().contains("[")) {
+                typeName = buildStructArrayTypeName(namedTypeName.namedType);
+            } else {
+                typeName = getNativeType(nonIndexedParameters.get(i).getTypeName());
+            }
+            if (structClassNameMap.values().stream()
+                            .noneMatch(name -> name.equals(namedTypeName.getTypeName()))
+                    && !namedTypeName.getType().startsWith("tuple[")) {
+                result += ".getValue()";
+            }
             builder.addStatement(
-                    "$L.$L = ($T) eventValues.getNonIndexedValues().get($L)" + nativeConversion,
-                    objectName,
-                    nonIndexedParameters.get(i).getName(),
-                    getNativeType(nonIndexedParameters.get(i).getTypeName()),
-                    i);
+                    result, objectName, nonIndexedParameters.get(i).getName(), typeName, i);
         }
         return builder.build();
     }
@@ -1493,17 +1578,21 @@ public class SolidityContractWrapper {
 
     private static class NamedTypeName {
         private final TypeName typeName;
-        private final String name;
+        private final ABIDefinition.NamedType namedType;
         private final boolean indexed;
 
-        NamedTypeName(String name, TypeName typeName, boolean indexed) {
-            this.name = name;
+        NamedTypeName(ABIDefinition.NamedType namedType, TypeName typeName, boolean indexed) {
+            this.namedType = namedType;
             this.typeName = typeName;
             this.indexed = indexed;
         }
 
         public String getName() {
-            return name;
+            return namedType.getName();
+        }
+
+        public String getType() {
+            return namedType.getType();
         }
 
         public TypeName getTypeName() {
@@ -1512,6 +1601,10 @@ public class SolidityContractWrapper {
 
         public boolean isIndexed() {
             return indexed;
+        }
+
+        public int structIdentifier() {
+            return namedType.structIdentifier();
         }
     }
 
@@ -1747,12 +1840,21 @@ public class SolidityContractWrapper {
                                             .structIdentifier())
                             .toString();
         } else {
-            structName =
-                    namedType
-                            .getInternalType()
-                            .substring(
-                                    namedType.getInternalType().lastIndexOf(" ") + 1,
-                                    namedType.getInternalType().indexOf("["));
+            if (namedType.getInternalType().contains(".")) {
+                structName =
+                        namedType
+                                .getInternalType()
+                                .substring(
+                                        namedType.getInternalType().lastIndexOf(".") + 1,
+                                        namedType.getInternalType().indexOf("["));
+            } else {
+                structName =
+                        namedType
+                                .getInternalType()
+                                .substring(
+                                        namedType.getInternalType().lastIndexOf(" ") + 1,
+                                        namedType.getInternalType().indexOf("["));
+            }
         }
 
         return ParameterizedTypeName.get(
