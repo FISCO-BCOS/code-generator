@@ -162,7 +162,8 @@ public class CodeGenV3Test {
                                 DEFAULT_PACKAGE,
                                 "-o",
                                 javaOutPut,
-                                "-e")
+                                "-e",
+                                "-n")
                         .toArray(new String[0]));
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();

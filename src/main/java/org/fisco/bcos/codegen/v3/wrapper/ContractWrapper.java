@@ -52,6 +52,8 @@ import org.fisco.bcos.sdk.v3.model.CryptoType;
 import org.fisco.bcos.sdk.v3.model.TransactionReceipt;
 import org.fisco.bcos.sdk.v3.model.callback.CallCallback;
 import org.fisco.bcos.sdk.v3.model.callback.TransactionCallback;
+import org.fisco.bcos.sdk.v3.transaction.manager.transactionv2.ProxySignTransactionManager;
+import org.fisco.bcos.sdk.v3.transaction.manager.transactionv2.TransactionManager;
 import org.fisco.bcos.sdk.v3.transaction.model.exception.ContractException;
 import org.fisco.bcos.sdk.v3.utils.Collection;
 import org.fisco.bcos.sdk.v3.utils.StringUtils;
@@ -87,6 +89,8 @@ public class ContractWrapper {
     private static final String FUNC_NAME_PREFIX = "FUNC_";
     private static final String EVENT_ENCODER = "eventEncoder";
 
+    private static final String TRANSACTION_MANAGER = "transactionManager";
+
     private static final String TUPLE_REGEX = "tuple\\.Tuple(\\d+)";
     private static final Pattern TUPLE_PATTERN = Pattern.compile(TUPLE_REGEX);
 
@@ -98,6 +102,7 @@ public class ContractWrapper {
     private static final List<ABIDefinition.NamedType> structsNamedTypeList = new ArrayList<>();
 
     private boolean enableAsyncCall = false;
+    private boolean useNewTransactionManager = false;
 
     public ContractWrapper(boolean isWasm) {
         this.isWasm = isWasm;
@@ -110,9 +115,11 @@ public class ContractWrapper {
             String abi,
             String destinationDir,
             String basePackageName,
-            boolean enableAsyncCall)
+            boolean enableAsyncCall,
+            boolean useNewTransactionManager)
             throws IOException, ClassNotFoundException, UnsupportedOperationException {
         this.enableAsyncCall = enableAsyncCall;
+        this.useNewTransactionManager = useNewTransactionManager;
         String[] nameParts = contractName.split("_");
         for (int i = 0; i < nameParts.length; ++i) {
             nameParts[i] = StringUtils.capitaliseFirstLetter(nameParts[i]);
@@ -153,6 +160,9 @@ public class ContractWrapper {
                         .collect(Collectors.toList()));
         classBuilder.addMethods(this.buildFunctionDefinitions(classBuilder, abiDefinitions));
         classBuilder.addMethod(buildLoad(className));
+        if (useNewTransactionManager) {
+            classBuilder.addMethod(buildDefaultLoad(className));
+        }
         classBuilder.addMethods(this.buildDeployMethods(isWasm, className, abiDefinitions));
 
         this.write(basePackageName, classBuilder.build(), destinationDir);
@@ -281,6 +291,8 @@ public class ContractWrapper {
             if (functionDefinition.getType().equals("function")) {
                 MethodSpec ms = this.buildFunction(functionDefinition);
                 methodSpecs.add(ms);
+                MethodSpec msRawFunction = buildRawFunctionReturn(functionDefinition);
+                methodSpecs.add(msRawFunction);
                 if (functionDefinition.isConstant() && enableAsyncCall) {
                     MethodSpec msCallback = this.buildFunctionWithCallback(functionDefinition);
                     methodSpecs.add(msCallback);
@@ -655,19 +667,36 @@ public class ContractWrapper {
         return toReturn.build();
     }
 
-    private static MethodSpec buildConstructor() {
-        MethodSpec.Builder toReturn =
-                MethodSpec.constructorBuilder()
-                        .addModifiers(Modifier.PROTECTED)
-                        .addParameter(String.class, CONTRACT_ADDRESS)
-                        .addParameter(Client.class, CLIENT)
-                        .addParameter(CryptoKeyPair.class, ContractWrapper.CREDENTIAL)
-                        .addStatement(
-                                "super($N, $N, $N, $N)",
-                                getBinaryFuncDefinition(),
-                                CONTRACT_ADDRESS,
-                                CLIENT,
-                                ContractWrapper.CREDENTIAL);
+    private MethodSpec buildConstructor() {
+        MethodSpec.Builder toReturn;
+        if (this.useNewTransactionManager) {
+            toReturn =
+                    MethodSpec.constructorBuilder()
+                            .addModifiers(Modifier.PROTECTED)
+                            .addParameter(String.class, CONTRACT_ADDRESS)
+                            .addParameter(Client.class, CLIENT)
+                            .addParameter(
+                                    TransactionManager.class, ContractWrapper.TRANSACTION_MANAGER)
+                            .addStatement(
+                                    "super($N, $N, $N, $N)",
+                                    getBinaryFuncDefinition(),
+                                    CONTRACT_ADDRESS,
+                                    CLIENT,
+                                    ContractWrapper.TRANSACTION_MANAGER);
+        } else {
+            toReturn =
+                    MethodSpec.constructorBuilder()
+                            .addModifiers(Modifier.PROTECTED)
+                            .addParameter(String.class, CONTRACT_ADDRESS)
+                            .addParameter(Client.class, CLIENT)
+                            .addParameter(CryptoKeyPair.class, ContractWrapper.CREDENTIAL)
+                            .addStatement(
+                                    "super($N, $N, $N, $N)",
+                                    getBinaryFuncDefinition(),
+                                    CONTRACT_ADDRESS,
+                                    CLIENT,
+                                    ContractWrapper.CREDENTIAL);
+        }
         return toReturn.build();
     }
 
@@ -684,43 +713,78 @@ public class ContractWrapper {
         }
     }
 
-    private static MethodSpec buildDeployWithParams(
+    private MethodSpec buildDeployWithParams(
             boolean isWasm,
             MethodSpec.Builder methodBuilder,
             String className,
             String inputParams) {
-        methodBuilder
-                .addStatement(
-                        "byte[] encodedConstructor = $T.encodeConstructor("
-                                + "$T.<$T>asList($L)"
-                                + ")",
-                        isWasm
-                                ? org.fisco.bcos.sdk.v3.codec.scale.FunctionEncoder.class
-                                : org.fisco.bcos.sdk.v3.codec.abi.FunctionEncoder.class,
-                        Arrays.class,
-                        Type.class,
-                        inputParams)
-                .addStatement(
-                        "return deploy(" + "$L.class, $L, $L, $L, $L, encodedConstructor, $L)",
-                        className,
-                        CLIENT,
-                        ContractWrapper.CREDENTIAL,
-                        getBinaryFuncDefinition(),
-                        getABIFuncDefinition(),
-                        isWasm ? PATH : "null");
+        methodBuilder.addStatement(
+                "byte[] encodedConstructor = $T.encodeConstructor(" + "$T.<$T>asList($L)" + ")",
+                isWasm
+                        ? org.fisco.bcos.sdk.v3.codec.scale.FunctionEncoder.class
+                        : org.fisco.bcos.sdk.v3.codec.abi.FunctionEncoder.class,
+                Arrays.class,
+                Type.class,
+                inputParams);
+        if (this.useNewTransactionManager) {
+            methodBuilder
+                    .addStatement(
+                            "$L contract = deploy("
+                                    + "$L.class, $L, $L, $L, $L, encodedConstructor, $L)",
+                            className,
+                            className,
+                            CLIENT,
+                            ContractWrapper.CREDENTIAL,
+                            getBinaryFuncDefinition(),
+                            getABIFuncDefinition(),
+                            isWasm ? PATH : "null")
+                    .addStatement(
+                            "contract.setTransactionManager(new $T($L))",
+                            ProxySignTransactionManager.class,
+                            CLIENT)
+                    .addStatement("return contract");
+        } else {
+            methodBuilder.addStatement(
+                    "return deploy(" + "$L.class, $L, $L, $L, $L, encodedConstructor, $L)",
+                    className,
+                    CLIENT,
+                    ContractWrapper.CREDENTIAL,
+                    getBinaryFuncDefinition(),
+                    getABIFuncDefinition(),
+                    isWasm ? PATH : "null");
+        }
         return methodBuilder.build();
     }
 
-    private static MethodSpec buildDeployNoParams(
+    private MethodSpec buildDeployNoParams(
             boolean isWasm, MethodSpec.Builder methodBuilder, String className) {
-        methodBuilder.addStatement(
-                "return deploy($L.class, $L, $L, $L, $L, null, $L)",
-                className,
-                CLIENT,
-                ContractWrapper.CREDENTIAL,
-                getBinaryFuncDefinition(),
-                getABIFuncDefinition(),
-                isWasm ? PATH : "null");
+        if (this.useNewTransactionManager) {
+            methodBuilder
+                    .addStatement(
+                            "$L contract = deploy($L.class, $L, $L, $L, $L, null, $L)",
+                            className,
+                            className,
+                            CLIENT,
+                            ContractWrapper.CREDENTIAL,
+                            getBinaryFuncDefinition(),
+                            getABIFuncDefinition(),
+                            isWasm ? PATH : "null")
+                    .addStatement(
+                            "contract.setTransactionManager(new $T($L))",
+                            ProxySignTransactionManager.class,
+                            CLIENT)
+                    .addStatement("return contract");
+        } else {
+
+            methodBuilder.addStatement(
+                    "return deploy($L.class, $L, $L, $L, $L, null, $L)",
+                    className,
+                    CLIENT,
+                    ContractWrapper.CREDENTIAL,
+                    getBinaryFuncDefinition(),
+                    getABIFuncDefinition(),
+                    isWasm ? PATH : "null");
+        }
         return methodBuilder.build();
     }
 
@@ -738,20 +802,54 @@ public class ContractWrapper {
         return methodSpec;
     }
 
-    private static MethodSpec buildLoad(String className) {
+    private MethodSpec buildLoad(String className) {
+        MethodSpec.Builder toReturn;
+        if (this.useNewTransactionManager) {
+            toReturn =
+                    MethodSpec.methodBuilder("load")
+                            .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                            .returns(TypeVariableName.get(className, Type.class))
+                            .addParameter(String.class, CONTRACT_ADDRESS)
+                            .addParameter(Client.class, CLIENT)
+                            .addParameter(
+                                    TransactionManager.class, ContractWrapper.TRANSACTION_MANAGER)
+                            .addStatement(
+                                    "return new $L($L, $L, $L)",
+                                    className,
+                                    CONTRACT_ADDRESS,
+                                    CLIENT,
+                                    ContractWrapper.TRANSACTION_MANAGER);
+        } else {
+            toReturn =
+                    MethodSpec.methodBuilder("load")
+                            .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                            .returns(TypeVariableName.get(className, Type.class))
+                            .addParameter(String.class, CONTRACT_ADDRESS)
+                            .addParameter(Client.class, CLIENT)
+                            .addParameter(CryptoKeyPair.class, ContractWrapper.CREDENTIAL)
+                            .addStatement(
+                                    "return new $L($L, $L, $L)",
+                                    className,
+                                    CONTRACT_ADDRESS,
+                                    CLIENT,
+                                    ContractWrapper.CREDENTIAL);
+        }
+        return toReturn.build();
+    }
+
+    private MethodSpec buildDefaultLoad(String className) {
         MethodSpec.Builder toReturn =
                 MethodSpec.methodBuilder("load")
                         .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
                         .returns(TypeVariableName.get(className, Type.class))
                         .addParameter(String.class, CONTRACT_ADDRESS)
                         .addParameter(Client.class, CLIENT)
-                        .addParameter(CryptoKeyPair.class, ContractWrapper.CREDENTIAL)
                         .addStatement(
                                 "return new $L($L, $L, $L)",
                                 className,
                                 CONTRACT_ADDRESS,
                                 CLIENT,
-                                ContractWrapper.CREDENTIAL);
+                                "new ProxySignTransactionManager(" + CLIENT + ")");
         return toReturn.build();
     }
 
@@ -1250,6 +1348,73 @@ public class ContractWrapper {
         return methodBuilder.build();
     }
 
+    private MethodSpec buildRawFunctionReturn(ABIDefinition functionDefinition)
+            throws ClassNotFoundException {
+        String functionName = functionDefinition.getName();
+
+        if (!SourceVersion.isName(functionName)) {
+            functionName = "_" + functionName;
+        }
+
+        MethodSpec.Builder methodBuilder =
+                MethodSpec.methodBuilder(
+                                "getMethod"
+                                        + org.apache.commons.lang3.StringUtils.capitalize(
+                                                functionName)
+                                        + "RawFunction")
+                        .addModifiers(Modifier.PUBLIC);
+
+        String inputParams = this.addParameters(methodBuilder, functionDefinition.getInputs());
+
+        List<TypeName> outputParameterTypes = buildTypeNames(functionDefinition.getOutputs());
+
+        methodBuilder.addException(ContractException.class);
+        if (outputParameterTypes.isEmpty()) {
+            methodBuilder.addStatement(
+                    "throw new RuntimeException"
+                            + "(\"cannot call constant function with void return type\")");
+        } else if (outputParameterTypes.size() == 1) {
+            TypeName typeName = outputParameterTypes.get(0);
+            TypeName nativeReturnTypeName;
+            ABIDefinition.NamedType outputType = functionDefinition.getOutputs().get(0);
+            if (outputType.getType().equals("tuple")) {
+                nativeReturnTypeName = structClassNameMap.get(outputType.structIdentifier());
+            } else if (outputType.getType().startsWith("tuple")
+                    && outputType.getType().contains("[")) {
+                TypeName argument =
+                        ((ParameterizedTypeName) buildStructArrayTypeName(outputType))
+                                .typeArguments.get(0);
+                nativeReturnTypeName =
+                        ParameterizedTypeName.get(
+                                ClassName.get(List.class), ClassName.get("", argument.toString()));
+            } else {
+                nativeReturnTypeName = this.getWrapperRawType(typeName);
+            }
+
+            methodBuilder.returns(nativeReturnTypeName);
+
+            methodBuilder.addStatement(
+                    "final $T function = "
+                            + "new $T($N, \n$T.<$T>asList($L), "
+                            + "\n$T.<$T<?>>asList(new $T<$T>() {}))",
+                    Function.class,
+                    Function.class,
+                    funcNameToConst(functionName),
+                    Arrays.class,
+                    Type.class,
+                    inputParams,
+                    Arrays.class,
+                    TypeReference.class,
+                    TypeReference.class,
+                    typeName);
+            CodeBlock.Builder callCode = CodeBlock.builder();
+            callCode.addStatement("return function");
+
+            methodBuilder.returns(Function.class).addCode(callCode.build());
+        }
+        return methodBuilder.build();
+    }
+
     private void buildConstantFunction(
             ABIDefinition functionDefinition,
             MethodSpec.Builder methodBuilder,
@@ -1509,26 +1674,23 @@ public class ContractWrapper {
         MethodSpec.Builder getEventMethodBuilder =
                 MethodSpec.methodBuilder(generatedFunctionName)
                         .addModifiers(Modifier.PUBLIC)
-                        .addParameter(String.class, FROM_BLOCK)
-                        .addParameter(String.class, TO_BLOCK);
+                        .addParameter(BigInteger.class, FROM_BLOCK)
+                        .addParameter(BigInteger.class, TO_BLOCK);
 
         this.addParameter(getEventMethodBuilder, "string[]", OTHER_TOPICS);
-        // FIXME: implement event sub
-        //        getEventMethodBuilder.addParameter(EventCallback.class, CALLBACK_VALUE);
+        getEventMethodBuilder.addParameter(EventSubCallback.class, CALLBACK_VALUE);
         getEventMethodBuilder.addStatement(
                 "String topic0 = $N.encode(" + this.buildEventDefinitionName(eventName) + ")",
                 EVENT_ENCODER);
 
         getEventMethodBuilder.addStatement(
-                "subscribeEvent(ABI,BINARY"
+                "subscribeEvent(topic0"
                         + ","
-                        + "topic0"
+                        + OTHER_TOPICS
                         + ","
                         + FROM_BLOCK
                         + ","
                         + TO_BLOCK
-                        + ","
-                        + OTHER_TOPICS
                         + ","
                         + CALLBACK_VALUE
                         + ")");
@@ -1549,8 +1711,7 @@ public class ContractWrapper {
                 "String topic0 = $N.encode(" + buildEventDefinitionName(eventName) + ")",
                 EVENT_ENCODER);
 
-        getEventMethodBuilder.addStatement(
-                "subscribeEvent(ABI,BINARY" + ",topic0" + "," + CALLBACK_VALUE + ")");
+        getEventMethodBuilder.addStatement("subscribeEvent(topic0" + "," + CALLBACK_VALUE + ")");
 
         return getEventMethodBuilder.build();
     }
@@ -1658,7 +1819,8 @@ public class ContractWrapper {
         methods.add(
                 this.buildEventTransactionReceiptFunction(
                         responseClassName, functionName, indexedParameters, nonIndexedParameters));
-
+        methods.add(buildSubscribeEventFunction(functionName));
+        methods.add(buildDefaultSubscribeEventLog(functionName));
         return methods;
     }
 
