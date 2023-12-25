@@ -104,8 +104,13 @@ public class CodeGenMain {
 
         @Option(
                 names = {"-e", "--enableAsyncCall"},
-                description = "enable async call.")
+                description = "enable async call, only V3 enable.")
         private boolean enableAsyncCall = false;
+
+        @Option(
+                names = {"-n", "--newTxManager"},
+                description = "use new transaction manager interface, only V3 enable.")
+        private boolean useNewTransactionManager = false;
 
         @Override
         public void run() {
@@ -125,7 +130,8 @@ public class CodeGenMain {
                                     abiFile,
                                     destinationFileDir,
                                     packageName,
-                                    enableAsyncCall)
+                                    enableAsyncCall,
+                                    useNewTransactionManager)
                             .generateJavaFiles();
                 } catch (Exception e) {
                     org.fisco.bcos.codegen.v3.utils.CodeGenUtils.exitError(e);
