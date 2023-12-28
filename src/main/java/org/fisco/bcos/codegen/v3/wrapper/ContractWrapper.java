@@ -28,6 +28,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Modifier;
+import org.fisco.bcos.codegen.CodeGenMain;
 import org.fisco.bcos.codegen.v3.utils.CodeGenUtils;
 import org.fisco.bcos.sdk.v3.client.Client;
 import org.fisco.bcos.sdk.v3.client.protocol.model.TransactionAttribute;
@@ -102,7 +103,7 @@ public class ContractWrapper {
     private static final List<ABIDefinition.NamedType> structsNamedTypeList = new ArrayList<>();
 
     private boolean enableAsyncCall = false;
-    private boolean useNewTransactionManager = false;
+    private int transactionVersion = 0;
 
     public ContractWrapper(boolean isWasm) {
         this.isWasm = isWasm;
@@ -116,10 +117,10 @@ public class ContractWrapper {
             String destinationDir,
             String basePackageName,
             boolean enableAsyncCall,
-            boolean useNewTransactionManager)
+            int transactionVersion)
             throws IOException, ClassNotFoundException, UnsupportedOperationException {
         this.enableAsyncCall = enableAsyncCall;
-        this.useNewTransactionManager = useNewTransactionManager;
+        this.transactionVersion = transactionVersion;
         String[] nameParts = contractName.split("_");
         for (int i = 0; i < nameParts.length; ++i) {
             nameParts[i] = StringUtils.capitaliseFirstLetter(nameParts[i]);
@@ -160,7 +161,7 @@ public class ContractWrapper {
                         .collect(Collectors.toList()));
         classBuilder.addMethods(this.buildFunctionDefinitions(classBuilder, abiDefinitions));
         classBuilder.addMethod(buildLoad(className));
-        if (useNewTransactionManager) {
+        if (transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
             classBuilder.addMethod(buildDefaultLoad(className));
         }
         classBuilder.addMethods(this.buildDeployMethods(isWasm, className, abiDefinitions));
@@ -669,7 +670,7 @@ public class ContractWrapper {
 
     private MethodSpec buildConstructor() {
         MethodSpec.Builder toReturn;
-        if (this.useNewTransactionManager) {
+        if (this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
             toReturn =
                     MethodSpec.constructorBuilder()
                             .addModifiers(Modifier.PROTECTED)
@@ -726,7 +727,7 @@ public class ContractWrapper {
                 Arrays.class,
                 Type.class,
                 inputParams);
-        if (this.useNewTransactionManager) {
+        if (this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
             methodBuilder
                     .addStatement(
                             "$L contract = deploy("
@@ -758,7 +759,7 @@ public class ContractWrapper {
 
     private MethodSpec buildDeployNoParams(
             boolean isWasm, MethodSpec.Builder methodBuilder, String className) {
-        if (this.useNewTransactionManager) {
+        if (this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
             methodBuilder
                     .addStatement(
                             "$L contract = deploy($L.class, $L, $L, $L, $L, null, $L)",
@@ -804,7 +805,7 @@ public class ContractWrapper {
 
     private MethodSpec buildLoad(String className) {
         MethodSpec.Builder toReturn;
-        if (this.useNewTransactionManager) {
+        if (this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
             toReturn =
                     MethodSpec.methodBuilder("load")
                             .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
@@ -1370,9 +1371,27 @@ public class ContractWrapper {
 
         methodBuilder.addException(ContractException.class);
         if (outputParameterTypes.isEmpty()) {
-            methodBuilder.addStatement(
-                    "throw new RuntimeException"
-                            + "(\"cannot call constant function with void return type\")");
+            if (functionDefinition.isConstant()) {
+                methodBuilder.addStatement(
+                        "throw new RuntimeException"
+                                + "(\"cannot call constant function with void return type\")");
+            } else {
+                methodBuilder.addStatement(
+                        "final $T function = "
+                                + "new $T($N, \n$T.<$T>asList($L), "
+                                + "\n$T.<$T<?>>asList())",
+                        Function.class,
+                        Function.class,
+                        funcNameToConst(functionName),
+                        Arrays.class,
+                        Type.class,
+                        inputParams,
+                        Arrays.class,
+                        TypeReference.class);
+                CodeBlock.Builder callCode = CodeBlock.builder();
+                callCode.addStatement("return function");
+                methodBuilder.returns(Function.class).addCode(callCode.build());
+            }
         } else if (outputParameterTypes.size() == 1) {
             TypeName typeName = outputParameterTypes.get(0);
             TypeName nativeReturnTypeName;
@@ -1410,6 +1429,24 @@ public class ContractWrapper {
             CodeBlock.Builder callCode = CodeBlock.builder();
             callCode.addStatement("return function");
 
+            methodBuilder.returns(Function.class).addCode(callCode.build());
+        } else {
+            List<TypeName> returnTypes = new ArrayList<>();
+            for (int i = 0; i < functionDefinition.getOutputs().size(); ++i) {
+                ABIDefinition.NamedType outputType = functionDefinition.getOutputs().get(i);
+                if (outputType.getType().equals("tuple")) {
+                    returnTypes.add(structClassNameMap.get(outputType.structIdentifier()));
+                } else if (outputType.getType().startsWith("tuple")
+                        && outputType.getType().contains("[")) {
+                    returnTypes.add(buildStructArrayTypeName(outputType));
+                } else {
+                    returnTypes.add(getNativeType(outputParameterTypes.get(i)));
+                }
+            }
+            buildVariableLengthReturnFunctionConstructor(
+                    methodBuilder, functionName, inputParams, outputParameterTypes);
+            CodeBlock.Builder callCode = CodeBlock.builder();
+            callCode.addStatement("return function");
             methodBuilder.returns(Function.class).addCode(callCode.build());
         }
         return methodBuilder.build();
