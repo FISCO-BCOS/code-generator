@@ -53,7 +53,7 @@ public class ContractGenerator {
     private String basePackageName;
 
     private boolean enableAsyncCall = false;
-    private boolean useNewTransactionManager = false;
+    private int transactionVersion = 0;
 
     public ContractGenerator(
             File binFile,
@@ -86,9 +86,9 @@ public class ContractGenerator {
             File destinationDir,
             String basePackageName,
             boolean enableAsyncCall,
-            boolean useNewTransactionManager) {
+            int transactionVersion) {
         this(binFile, smBinFile, abiFile, destinationDir, basePackageName, enableAsyncCall);
-        this.useNewTransactionManager = useNewTransactionManager;
+        this.transactionVersion = transactionVersion;
     }
 
     public void generateJavaFiles() throws CodeGenException, IOException, ClassNotFoundException {
@@ -117,7 +117,7 @@ public class ContractGenerator {
                         destinationDir.toString(),
                         basePackageName,
                         enableAsyncCall,
-                        useNewTransactionManager);
+                        transactionVersion);
     }
 
     private byte[] calculateWasmBytes(byte[] binary) throws IOException {
