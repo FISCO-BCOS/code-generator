@@ -143,6 +143,9 @@ public class ContractWrapper {
         classBuilder.addMethod(buildGetBinaryMethod());
         classBuilder.addMethod(buildGetABIMethod());
         classBuilder.addMethod(buildConstructor());
+        if (this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
+            classBuilder.addMethod(buildTransactionV1Constructor());
+        }
 
         classBuilder.addFields(this.buildFuncNameConstants(abiDefinitions));
         classBuilder.addTypes(this.buildStructTypes(abiDefinitions));
@@ -669,8 +672,29 @@ public class ContractWrapper {
     }
 
     private MethodSpec buildConstructor() {
-        MethodSpec.Builder toReturn;
+        MethodSpec.Builder toReturn =
+                MethodSpec.constructorBuilder()
+                        .addModifiers(Modifier.PROTECTED)
+                        .addParameter(String.class, CONTRACT_ADDRESS)
+                        .addParameter(Client.class, CLIENT)
+                        .addParameter(CryptoKeyPair.class, ContractWrapper.CREDENTIAL)
+                        .addStatement(
+                                "super($N, $N, $N, $N)",
+                                getBinaryFuncDefinition(),
+                                CONTRACT_ADDRESS,
+                                CLIENT,
+                                ContractWrapper.CREDENTIAL);
+        toReturn.addStatement(
+                "this.$N = new $T($N)",
+                ContractWrapper.TRANSACTION_MANAGER,
+                ProxySignTransactionManager.class,
+                CLIENT);
+        return toReturn.build();
+    }
+
+    private MethodSpec buildTransactionV1Constructor() {
         if (this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
+            MethodSpec.Builder toReturn;
             toReturn =
                     MethodSpec.constructorBuilder()
                             .addModifiers(Modifier.PROTECTED)
@@ -684,21 +708,9 @@ public class ContractWrapper {
                                     CONTRACT_ADDRESS,
                                     CLIENT,
                                     ContractWrapper.TRANSACTION_MANAGER);
-        } else {
-            toReturn =
-                    MethodSpec.constructorBuilder()
-                            .addModifiers(Modifier.PROTECTED)
-                            .addParameter(String.class, CONTRACT_ADDRESS)
-                            .addParameter(Client.class, CLIENT)
-                            .addParameter(CryptoKeyPair.class, ContractWrapper.CREDENTIAL)
-                            .addStatement(
-                                    "super($N, $N, $N, $N)",
-                                    getBinaryFuncDefinition(),
-                                    CONTRACT_ADDRESS,
-                                    CLIENT,
-                                    ContractWrapper.CREDENTIAL);
+            return toReturn.build();
         }
-        return toReturn.build();
+        return null;
     }
 
     private MethodSpec buildDeploy(
