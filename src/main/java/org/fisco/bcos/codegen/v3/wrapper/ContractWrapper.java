@@ -81,6 +81,7 @@ public class ContractWrapper {
     private static final String CLIENT = "client";
     private static final String PATH = "contractPath";
     private static final String CREDENTIAL = "credential";
+    private static final String VALUE = "value";
     private static final String CRYPTO_SUITE = "cryptoSuite";
     private static final String CONTRACT_ADDRESS = "contractAddress";
     private static final String FROM_BLOCK = "fromBlock";
@@ -612,8 +613,10 @@ public class ContractWrapper {
         }
         // constructor will not be specified in ABI file if its empty
         if (!constructor) {
-            MethodSpec.Builder credentialsMethodBuilder = getDeployMethodSpec(isWasm, className);
-            methodSpecs.add(buildDeployNoParams(isWasm, credentialsMethodBuilder, className));
+            MethodSpec.Builder credentialsMethodBuilder =
+                    getDeployMethodSpec(isWasm, className, false);
+            methodSpecs.add(
+                    buildDeployNoParams(isWasm, credentialsMethodBuilder, className, false));
         }
         return methodSpecs;
     }
@@ -716,13 +719,14 @@ public class ContractWrapper {
     private MethodSpec buildDeploy(
             boolean isWasm, String className, ABIDefinition functionDefinition)
             throws ClassNotFoundException {
-        MethodSpec.Builder methodBuilder = getDeployMethodSpec(isWasm, className);
+        boolean isPayable = isPayable(functionDefinition);
+        MethodSpec.Builder methodBuilder = getDeployMethodSpec(isWasm, className, isPayable);
         String inputParams = this.addParameters(methodBuilder, functionDefinition.getInputs());
 
         if (!inputParams.isEmpty()) {
-            return buildDeployWithParams(isWasm, methodBuilder, className, inputParams);
+            return buildDeployWithParams(isWasm, methodBuilder, className, inputParams, isPayable);
         } else {
-            return buildDeployNoParams(isWasm, methodBuilder, className);
+            return buildDeployNoParams(isWasm, methodBuilder, className, isPayable);
         }
     }
 
@@ -730,7 +734,8 @@ public class ContractWrapper {
             boolean isWasm,
             MethodSpec.Builder methodBuilder,
             String className,
-            String inputParams) {
+            String inputParams,
+            boolean isPayable) {
         methodBuilder.addStatement(
                 "byte[] encodedConstructor = $T.encodeConstructor(" + "$T.<$T>asList($L)" + ")",
                 isWasm
@@ -740,10 +745,15 @@ public class ContractWrapper {
                 Type.class,
                 inputParams);
         if (this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
+            String format =
+                    "$L contract = deploy($L.class, $L, $L, $L, $L, encodedConstructor, $L)";
+            if (isPayable) {
+                format =
+                        "$L contract = deploy($L.class, $L, $L, $L, $L, encodedConstructor, $L, value)";
+            }
             methodBuilder
                     .addStatement(
-                            "$L contract = deploy("
-                                    + "$L.class, $L, $L, $L, $L, encodedConstructor, $L)",
+                            format,
                             className,
                             className,
                             CLIENT,
@@ -770,11 +780,15 @@ public class ContractWrapper {
     }
 
     private MethodSpec buildDeployNoParams(
-            boolean isWasm, MethodSpec.Builder methodBuilder, String className) {
+            boolean isWasm, MethodSpec.Builder methodBuilder, String className, boolean isPayable) {
         if (this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
+            String format = "$L contract = deploy($L.class, $L, $L, $L, $L, null, $L)";
+            if (isPayable) {
+                format = "$L contract = deploy($L.class, $L, $L, $L, $L, null, $L, value)";
+            }
             methodBuilder
                     .addStatement(
-                            "$L contract = deploy($L.class, $L, $L, $L, $L, null, $L)",
+                            format,
                             className,
                             className,
                             CLIENT,
@@ -801,7 +815,8 @@ public class ContractWrapper {
         return methodBuilder.build();
     }
 
-    private static MethodSpec.Builder getDeployMethodSpec(boolean isWasm, String className) {
+    private static MethodSpec.Builder getDeployMethodSpec(
+            boolean isWasm, String className, boolean isPayable) {
         MethodSpec.Builder methodSpec =
                 MethodSpec.methodBuilder("deploy")
                         .addException(ContractException.class)
@@ -811,6 +826,9 @@ public class ContractWrapper {
                         .addParameter(CryptoKeyPair.class, ContractWrapper.CREDENTIAL);
         if (isWasm) {
             methodSpec.addParameter(String.class, PATH);
+        }
+        if (isPayable) {
+            methodSpec.addParameter(BigInteger.class, ContractWrapper.VALUE);
         }
         return methodSpec;
     }
@@ -1184,9 +1202,17 @@ public class ContractWrapper {
             this.buildConstantFunction(
                     functionDefinition, methodBuilder, outputParameterTypes, inputParams);
         } else {
+            if (isPayable(functionDefinition)) {
+                methodBuilder.addParameter(BigInteger.class, VALUE);
+            }
             this.buildTransactionFunction(functionDefinition, methodBuilder, inputParams);
         }
         return methodBuilder.build();
+    }
+
+    private boolean isPayable(ABIDefinition functionDefinition) {
+        return functionDefinition.isPayable()
+                && this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV();
     }
 
     private MethodSpec buildFunctionSignedTransaction(ABIDefinition functionDefinition)
@@ -1203,6 +1229,9 @@ public class ContractWrapper {
 
         String inputParams = this.addParameters(methodBuilder, functionDefinition.getInputs());
 
+        if (isPayable(functionDefinition)) {
+            methodBuilder.addParameter(BigInteger.class, VALUE);
+        }
         this.buildTransactionFunctionSeq(functionDefinition, methodBuilder, inputParams);
 
         return methodBuilder.build();
@@ -1224,6 +1253,9 @@ public class ContractWrapper {
                     functionDefinition, methodBuilder, outputParameterTypes, inputParams);
         } else {
             String inputParams = this.addParameters(methodBuilder, functionDefinition.getInputs());
+            if (isPayable(functionDefinition)) {
+                methodBuilder.addParameter(BigInteger.class, VALUE);
+            }
             methodBuilder.addParameter(TransactionCallback.class, "callback");
             this.buildTransactionFunctionWithCallback(
                     functionDefinition, methodBuilder, inputParams);
@@ -1388,10 +1420,19 @@ public class ContractWrapper {
                         "throw new RuntimeException"
                                 + "(\"cannot call constant function with void return type\")");
             } else {
-                methodBuilder.addStatement(
+                String format =
                         "final $T function = "
                                 + "new $T($N, \n$T.<$T>asList($L), "
-                                + "\n$T.<$T<?>>asList())",
+                                + "\n$T.<$T<?>>asList())";
+                if (isPayable(functionDefinition)) {
+                    methodBuilder.addParameter(BigInteger.class, VALUE);
+                    format =
+                            "final $T function = "
+                                    + "new $T($N, \n$T.<$T>asList($L), "
+                                    + "\n$T.<$T<?>>asList(), 0, value)";
+                }
+                methodBuilder.addStatement(
+                        format,
                         Function.class,
                         Function.class,
                         funcNameToConst(functionName),
@@ -1601,9 +1642,17 @@ public class ContractWrapper {
 
         methodBuilder.returns(TypeName.get(TransactionReceipt.class));
         int dagAttribute = getDagAttribute(functionDefinition);
-        methodBuilder.addStatement(
+        String format =
                 "final $T function = new $T(\n$N, \n$T.<$T>asList($L), \n$T"
-                        + ".<$T<?>>emptyList(), $L)",
+                        + ".<$T<?>>emptyList(), $L)";
+        if (isPayable(functionDefinition)) {
+            format =
+                    "final $T function = new $T(\n$N, \n$T.<$T>asList($L), \n$T"
+                            + ".<$T<?>>emptyList(), $L, value)";
+        }
+
+        methodBuilder.addStatement(
+                format,
                 Function.class,
                 Function.class,
                 funcNameToConst(functionName),
@@ -1638,9 +1687,16 @@ public class ContractWrapper {
         methodBuilder.returns(String.class);
         int dagAttribute = getDagAttribute(functionDefinition);
 
-        methodBuilder.addStatement(
+        String format =
                 "final $T function = new $T(\n$N, \n$T.<$T>asList($L), \n$T"
-                        + ".<$T<?>>emptyList(), $L)",
+                        + ".<$T<?>>emptyList(), $L)";
+        if (isPayable(functionDefinition)) {
+            format =
+                    "final $T function = new $T(\n$N, \n$T.<$T>asList($L), \n$T"
+                            + ".<$T<?>>emptyList(), $L, value)";
+        }
+        methodBuilder.addStatement(
+                format,
                 Function.class,
                 Function.class,
                 funcNameToConst(functionName),
@@ -1662,9 +1718,16 @@ public class ContractWrapper {
         TypeName returnType = TypeName.get(String.class);
         methodBuilder.returns(returnType);
         int dagAttribute = getDagAttribute(functionDefinition);
-        methodBuilder.addStatement(
+        String format =
                 "final $T function = new $T(\n$N, \n$T.<$T>asList($L), \n$T"
-                        + ".<$T<?>>emptyList(), $L)",
+                        + ".<$T<?>>emptyList(), $L)";
+        if (isPayable(functionDefinition)) {
+            format =
+                    "final $T function = new $T(\n$N, \n$T.<$T>asList($L), \n$T"
+                            + ".<$T<?>>emptyList(), $L, value)";
+        }
+        methodBuilder.addStatement(
+                format,
                 Function.class,
                 Function.class,
                 funcNameToConst(functionName),
