@@ -7,7 +7,9 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -18,8 +20,22 @@ import javax.tools.ToolProvider;
 import org.fisco.bcos.codegen.CodeGenMain;
 import org.junit.Assert;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
+@RunWith(Parameterized.class)
 public class CodeGenV3Test {
+
+    @Parameterized.Parameter public boolean useV1Tx;
+
+    @Parameterized.Parameters
+    public static Collection<Object[]> data() {
+        return Arrays.asList(
+                new Object[][] {
+                    {false}, {true},
+                });
+    }
+
     private static final String JAVA_OUTPUT_DIR = "sdk";
     private static final String DEFAULT_PACKAGE = "com";
 
@@ -139,6 +155,13 @@ public class CodeGenV3Test {
         codeGenTest(ABI_FILE, CONTRACT_NAME);
     }
 
+    @Test
+    public void payableTestCodeGen() throws IOException {
+        final String ABI_FILE = "PayableTest.abi";
+        final String CONTRACT_NAME = "PayableTest";
+        codeGenTest(ABI_FILE, CONTRACT_NAME);
+    }
+
     private void codeGenTest(String abiFileName, String contractName) throws IOException {
         codeGenTest(abiFileName, abiFileName, contractName);
     }
@@ -148,8 +171,9 @@ public class CodeGenV3Test {
         String abiFile = CodeGenV3Test.class.getClassLoader().getResource(abiFileName).getPath();
         String binFile = CodeGenV3Test.class.getClassLoader().getResource(codeFilePath).getPath();
         String javaOutPut = new File(abiFile).getParent() + File.separator + JAVA_OUTPUT_DIR;
-        CodeGenMain.main(
-                Arrays.asList(
+        ArrayList<String> args =
+                new ArrayList<>(
+                        Arrays.asList(
                                 "-v",
                                 "V3",
                                 "-a",
@@ -162,8 +186,13 @@ public class CodeGenV3Test {
                                 DEFAULT_PACKAGE,
                                 "-o",
                                 javaOutPut,
-                                "-e")
-                        .toArray(new String[0]));
+                                "-e"));
+
+        if (useV1Tx) {
+            args.add("-t");
+            args.add("V1");
+        }
+        CodeGenMain.main(args.toArray(new String[0]));
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
         JavaFileManager javaFileManager =

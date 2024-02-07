@@ -24,6 +24,21 @@ public class CodeGenMain {
     public static final String COMMAND_GENERATE = "generate";
     public static final String COMMAND_PREFIX = COMMAND_SOLIDITY + " " + COMMAND_GENERATE;
 
+    public enum TransactionVersion {
+        V0(0),
+        V1(1);
+
+        private final int v;
+
+        TransactionVersion(int v) {
+            this.v = v;
+        }
+
+        public int getV() {
+            return v;
+        }
+    }
+
     public enum Version {
         V3(3),
         V2(2);
@@ -104,8 +119,13 @@ public class CodeGenMain {
 
         @Option(
                 names = {"-e", "--enableAsyncCall"},
-                description = "enable async call.")
+                description = "enable async call, only V3 enable.")
         private boolean enableAsyncCall = false;
+
+        @Option(
+                names = {"-t", "--txVersion"},
+                description = "specify transaction version, default is 0, only V3 enable.")
+        private TransactionVersion transactionVersion = TransactionVersion.V0;
 
         @Override
         public void run() {
@@ -125,7 +145,8 @@ public class CodeGenMain {
                                     abiFile,
                                     destinationFileDir,
                                     packageName,
-                                    enableAsyncCall)
+                                    enableAsyncCall,
+                                    transactionVersion.getV())
                             .generateJavaFiles();
                 } catch (Exception e) {
                     org.fisco.bcos.codegen.v3.utils.CodeGenUtils.exitError(e);
