@@ -416,6 +416,11 @@ public class ContractWrapper {
                 if (namedType.getType().equals("tuple[]") && internalType.endsWith("[]")) {
                     internalType = internalType.substring(0, internalType.lastIndexOf("["));
                 }
+                if (namedType.getType().matches("tuple\\[\\d+\\]")
+                        && internalType.endsWith("]")
+                        && internalType.matches(".*\\[\\d+\\]")) {
+                    internalType = internalType.substring(0, internalType.lastIndexOf("["));
+                }
                 if (isWasm) {
                     structName = internalType.substring(internalType.lastIndexOf(".") + 1);
                 } else {
