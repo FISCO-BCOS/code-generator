@@ -1648,8 +1648,11 @@ public class SolidityContractWrapper {
             if (internalType == null || internalType.isEmpty()) {
                 structName = "Struct" + structCounter;
             } else {
-                if (namedType.getType().equals("tuple[]") && internalType.endsWith("[]")) {
-                    internalType = internalType.substring(0, internalType.lastIndexOf("["));
+                // struct array, such as struct[2], struct[], struct[][], struct[2][]
+                if (namedType.getType().matches("tuple(\\[\\d*\\])+")
+                        && internalType.endsWith("]")
+                        && internalType.matches(".*(\\[\\d*\\])+")) {
+                    internalType = internalType.substring(0, internalType.indexOf("["));
                 }
                 if (internalType.contains(".")) {
                     structName = internalType.substring(internalType.lastIndexOf(".") + 1);

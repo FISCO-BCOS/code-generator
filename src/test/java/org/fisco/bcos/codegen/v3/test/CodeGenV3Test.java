@@ -32,7 +32,7 @@ public class CodeGenV3Test {
     public static Collection<Object[]> data() {
         return Arrays.asList(
                 new Object[][] {
-                    {false}, {true},
+                    {true}, {false},
                 });
     }
 
@@ -84,6 +84,13 @@ public class CodeGenV3Test {
     @Test
     public void complexABICodeGen() throws IOException {
         final String COMPLEX_ABI_FILE = "ComplexCodecTest.abi";
+        final String COMPLEX_NAME = "ComplexCodecTest";
+        codeGenTest(COMPLEX_ABI_FILE, COMPLEX_NAME);
+    }
+
+    @Test
+    public void complexABICodeGen2() throws IOException {
+        final String COMPLEX_ABI_FILE = "ComplexCodecTest2.abi";
         final String COMPLEX_NAME = "ComplexCodecTest";
         codeGenTest(COMPLEX_ABI_FILE, COMPLEX_NAME);
     }

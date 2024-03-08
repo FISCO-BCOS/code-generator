@@ -73,6 +73,13 @@ public class CodeGenV2Test {
     }
 
     @Test
+    public void complexABICodeGen2() throws IOException {
+        final String COMPLEX_ABI_FILE = "ComplexCodecTest2.abi";
+        final String COMPLEX_NAME = "ComplexCodecTest";
+        codeGenTest(COMPLEX_ABI_FILE, COMPLEX_NAME);
+    }
+
+    @Test
     public void tableABICodeGen() throws IOException {
         final String ABI_FILE = "Table.abi";
         final String CONTRACT_NAME = "Table";

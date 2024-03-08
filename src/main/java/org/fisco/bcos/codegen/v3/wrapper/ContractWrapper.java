@@ -413,8 +413,11 @@ public class ContractWrapper {
             if (internalType == null || internalType.isEmpty()) {
                 structName = "Struct" + structCounter;
             } else {
-                if (namedType.getType().equals("tuple[]") && internalType.endsWith("[]")) {
-                    internalType = internalType.substring(0, internalType.lastIndexOf("["));
+                // struct array, such as struct[2], struct[], struct[][], struct[2][]
+                if (namedType.getType().matches("tuple(\\[\\d*\\])+")
+                        && internalType.endsWith("]")
+                        && internalType.matches(".*(\\[\\d*\\])+")) {
+                    internalType = internalType.substring(0, internalType.indexOf("["));
                 }
                 if (isWasm) {
                     structName = internalType.substring(internalType.lastIndexOf(".") + 1);
@@ -687,11 +690,13 @@ public class ContractWrapper {
                                 CONTRACT_ADDRESS,
                                 CLIENT,
                                 ContractWrapper.CREDENTIAL);
-        toReturn.addStatement(
-                "this.$N = new $T($N)",
-                ContractWrapper.TRANSACTION_MANAGER,
-                ProxySignTransactionManager.class,
-                CLIENT);
+        if (this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
+            toReturn.addStatement(
+                    "this.$N = new $T($N)",
+                    ContractWrapper.TRANSACTION_MANAGER,
+                    ProxySignTransactionManager.class,
+                    CLIENT);
+        }
         return toReturn.build();
     }
 
