@@ -690,11 +690,13 @@ public class ContractWrapper {
                                 CONTRACT_ADDRESS,
                                 CLIENT,
                                 ContractWrapper.CREDENTIAL);
-        toReturn.addStatement(
-                "this.$N = new $T($N)",
-                ContractWrapper.TRANSACTION_MANAGER,
-                ProxySignTransactionManager.class,
-                CLIENT);
+        if (this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
+            toReturn.addStatement(
+                    "this.$N = new $T($N)",
+                    ContractWrapper.TRANSACTION_MANAGER,
+                    ProxySignTransactionManager.class,
+                    CLIENT);
+        }
         return toReturn.build();
     }
 

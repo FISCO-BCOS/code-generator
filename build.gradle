@@ -31,7 +31,7 @@ ext {
     commonsLang3Version = '3.12.0'
 
     javaSDKVersion3 = "3.6.0"
-    javaSDKVersion2 = "2.10.0-SNAPSHOT"
+    javaSDKVersion2 = "2.10.0"
     slf4jVersion = "1.7.32"
 }
 
@@ -50,7 +50,7 @@ sourceSets {
 // integrationTest.mustRunAfter test
 allprojects {
     group = 'org.fisco-bcos.code-generator'
-    version = '1.4.0-SNAPSHOT'
+    version = '1.4.0'
     apply plugin: 'maven-publish'
     apply plugin: 'idea'
     apply plugin: 'eclipse'
