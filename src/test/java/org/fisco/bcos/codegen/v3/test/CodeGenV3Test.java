@@ -26,14 +26,11 @@ import org.junit.runners.Parameterized;
 @RunWith(Parameterized.class)
 public class CodeGenV3Test {
 
-    @Parameterized.Parameter public boolean useV1Tx;
+    @Parameterized.Parameter public String txVersion;
 
     @Parameterized.Parameters
     public static Collection<Object[]> data() {
-        return Arrays.asList(
-                new Object[][] {
-                    {true}, {false},
-                });
+        return Arrays.asList(new Object[][] {{"V2"}, {"V1"}, {"V0"}});
     }
 
     private static final String JAVA_OUTPUT_DIR = "sdk";
@@ -195,10 +192,8 @@ public class CodeGenV3Test {
                                 javaOutPut,
                                 "-e"));
 
-        if (useV1Tx) {
-            args.add("-t");
-            args.add("V1");
-        }
+        args.add("-t");
+        args.add(txVersion);
         CodeGenMain.main(args.toArray(new String[0]));
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
