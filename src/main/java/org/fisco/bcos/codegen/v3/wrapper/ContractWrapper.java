@@ -1534,7 +1534,6 @@ public class ContractWrapper {
 
         List<TypeName> outputParameterTypes = buildTypeNames(functionDefinition.getOutputs());
 
-        methodBuilder.addException(ContractException.class);
         if (outputParameterTypes.isEmpty()) {
 
             String format =
