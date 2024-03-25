@@ -144,7 +144,7 @@ public class ContractWrapper {
         classBuilder.addMethod(buildGetBinaryMethod());
         classBuilder.addMethod(buildGetABIMethod());
         classBuilder.addMethod(buildConstructor());
-        if (this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
+        if (this.transactionVersion >= CodeGenMain.TransactionVersion.V1.getV()) {
             classBuilder.addMethod(buildTransactionV1Constructor());
         }
 
@@ -165,7 +165,7 @@ public class ContractWrapper {
                         .collect(Collectors.toList()));
         classBuilder.addMethods(this.buildFunctionDefinitions(classBuilder, abiDefinitions));
         classBuilder.addMethod(buildLoad(className));
-        if (transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
+        if (transactionVersion >= CodeGenMain.TransactionVersion.V1.getV()) {
             classBuilder.addMethod(buildDefaultLoad(className));
         }
         classBuilder.addMethods(this.buildDeployMethods(isWasm, className, abiDefinitions));
@@ -303,6 +303,11 @@ public class ContractWrapper {
                     methodSpecs.add(msCallback);
                 }
                 if (!functionDefinition.isConstant()) {
+                    if (this.transactionVersion >= CodeGenMain.TransactionVersion.V2.getV()) {
+                        MethodSpec methodSpec = buildContractWrapperReturn(functionDefinition);
+                        methodSpecs.add(methodSpec);
+                    }
+
                     MethodSpec msSeq = this.buildFunctionSignedTransaction(functionDefinition);
                     methodSpecs.add(msSeq);
                     MethodSpec msCallback = this.buildFunctionWithCallback(functionDefinition);
@@ -690,7 +695,7 @@ public class ContractWrapper {
                                 CONTRACT_ADDRESS,
                                 CLIENT,
                                 ContractWrapper.CREDENTIAL);
-        if (this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
+        if (this.transactionVersion >= CodeGenMain.TransactionVersion.V1.getV()) {
             toReturn.addStatement(
                     "this.$N = new $T($N)",
                     ContractWrapper.TRANSACTION_MANAGER,
@@ -701,7 +706,7 @@ public class ContractWrapper {
     }
 
     private MethodSpec buildTransactionV1Constructor() {
-        if (this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
+        if (this.transactionVersion >= CodeGenMain.TransactionVersion.V1.getV()) {
             MethodSpec.Builder toReturn;
             toReturn =
                     MethodSpec.constructorBuilder()
@@ -749,7 +754,7 @@ public class ContractWrapper {
                 Arrays.class,
                 Type.class,
                 inputParams);
-        if (this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
+        if (this.transactionVersion >= CodeGenMain.TransactionVersion.V1.getV()) {
             String format =
                     "$L contract = deploy($L.class, $L, $L, $L, $L, encodedConstructor, $L)";
             if (isPayable) {
@@ -786,7 +791,7 @@ public class ContractWrapper {
 
     private MethodSpec buildDeployNoParams(
             boolean isWasm, MethodSpec.Builder methodBuilder, String className, boolean isPayable) {
-        if (this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
+        if (this.transactionVersion >= CodeGenMain.TransactionVersion.V1.getV()) {
             String format = "$L contract = deploy($L.class, $L, $L, $L, $L, null, $L)";
             if (isPayable) {
                 format = "$L contract = deploy($L.class, $L, $L, $L, $L, null, $L, value)";
@@ -840,7 +845,7 @@ public class ContractWrapper {
 
     private MethodSpec buildLoad(String className) {
         MethodSpec.Builder toReturn;
-        if (this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV()) {
+        if (this.transactionVersion >= CodeGenMain.TransactionVersion.V1.getV()) {
             toReturn =
                     MethodSpec.methodBuilder("load")
                             .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
@@ -1217,7 +1222,7 @@ public class ContractWrapper {
 
     private boolean isPayable(ABIDefinition functionDefinition) {
         return functionDefinition.isPayable()
-                && this.transactionVersion == CodeGenMain.TransactionVersion.V1.getV();
+                && this.transactionVersion >= CodeGenMain.TransactionVersion.V1.getV();
     }
 
     private MethodSpec buildFunctionSignedTransaction(ABIDefinition functionDefinition)
@@ -1506,6 +1511,111 @@ public class ContractWrapper {
             CodeBlock.Builder callCode = CodeBlock.builder();
             callCode.addStatement("return function");
             methodBuilder.returns(Function.class).addCode(callCode.build());
+        }
+        return methodBuilder.build();
+    }
+
+    private MethodSpec buildContractWrapperReturn(ABIDefinition functionDefinition)
+            throws ClassNotFoundException {
+        String functionName = functionDefinition.getName();
+
+        if (!SourceVersion.isName(functionName)) {
+            functionName = "_" + functionName;
+        }
+
+        MethodSpec.Builder methodBuilder =
+                MethodSpec.methodBuilder(
+                                "buildMethod"
+                                        + org.apache.commons.lang3.StringUtils.capitalize(
+                                                functionName))
+                        .addModifiers(Modifier.PUBLIC);
+
+        String inputParams = this.addParameters(methodBuilder, functionDefinition.getInputs());
+
+        List<TypeName> outputParameterTypes = buildTypeNames(functionDefinition.getOutputs());
+
+        if (outputParameterTypes.isEmpty()) {
+
+            String format =
+                    "final $T function = "
+                            + "new $T($N, \n$T.<$T>asList($L), "
+                            + "\n$T.<$T<?>>asList())";
+            methodBuilder.addStatement(
+                    format,
+                    Function.class,
+                    Function.class,
+                    funcNameToConst(functionName),
+                    Arrays.class,
+                    Type.class,
+                    inputParams,
+                    Arrays.class,
+                    TypeReference.class);
+            CodeBlock.Builder callCode = CodeBlock.builder();
+            callCode.addStatement("return new FunctionWrapper(this, function)");
+            methodBuilder
+                    .returns(org.fisco.bcos.sdk.v3.contract.FunctionWrapper.class)
+                    .addCode(callCode.build());
+
+        } else if (outputParameterTypes.size() == 1) {
+            TypeName typeName = outputParameterTypes.get(0);
+            TypeName nativeReturnTypeName;
+            ABIDefinition.NamedType outputType = functionDefinition.getOutputs().get(0);
+            if (outputType.getType().equals("tuple")) {
+                nativeReturnTypeName = structClassNameMap.get(outputType.structIdentifier());
+            } else if (outputType.getType().startsWith("tuple")
+                    && outputType.getType().contains("[")) {
+                TypeName argument =
+                        ((ParameterizedTypeName) buildStructArrayTypeName(outputType))
+                                .typeArguments.get(0);
+                nativeReturnTypeName =
+                        ParameterizedTypeName.get(
+                                ClassName.get(List.class), ClassName.get("", argument.toString()));
+            } else {
+                nativeReturnTypeName = this.getWrapperRawType(typeName);
+            }
+
+            methodBuilder.returns(nativeReturnTypeName);
+
+            methodBuilder.addStatement(
+                    "final $T function = "
+                            + "new $T($N, \n$T.<$T>asList($L), "
+                            + "\n$T.<$T<?>>asList(new $T<$T>() {}))",
+                    Function.class,
+                    Function.class,
+                    funcNameToConst(functionName),
+                    Arrays.class,
+                    Type.class,
+                    inputParams,
+                    Arrays.class,
+                    TypeReference.class,
+                    TypeReference.class,
+                    typeName);
+            CodeBlock.Builder callCode = CodeBlock.builder();
+            callCode.addStatement("return new FunctionWrapper(this, function)");
+
+            methodBuilder
+                    .returns(org.fisco.bcos.sdk.v3.contract.FunctionWrapper.class)
+                    .addCode(callCode.build());
+        } else {
+            List<TypeName> returnTypes = new ArrayList<>();
+            for (int i = 0; i < functionDefinition.getOutputs().size(); ++i) {
+                ABIDefinition.NamedType outputType = functionDefinition.getOutputs().get(i);
+                if (outputType.getType().equals("tuple")) {
+                    returnTypes.add(structClassNameMap.get(outputType.structIdentifier()));
+                } else if (outputType.getType().startsWith("tuple")
+                        && outputType.getType().contains("[")) {
+                    returnTypes.add(buildStructArrayTypeName(outputType));
+                } else {
+                    returnTypes.add(getNativeType(outputParameterTypes.get(i)));
+                }
+            }
+            buildVariableLengthReturnFunctionConstructor(
+                    methodBuilder, functionName, inputParams, outputParameterTypes);
+            CodeBlock.Builder callCode = CodeBlock.builder();
+            callCode.addStatement("return new FunctionWrapper(this, function)");
+            methodBuilder
+                    .returns(org.fisco.bcos.sdk.v3.contract.FunctionWrapper.class)
+                    .addCode(callCode.build());
         }
         return methodBuilder.build();
     }
