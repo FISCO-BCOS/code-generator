@@ -30,6 +30,8 @@ import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Modifier;
 import org.fisco.bcos.codegen.CodeGenMain;
 import org.fisco.bcos.codegen.v3.utils.CodeGenUtils;
+import org.fisco.bcos.codegen.v3.utils.Devdoc;
+import org.fisco.bcos.codegen.v3.utils.DocUtils;
 import org.fisco.bcos.sdk.v3.client.Client;
 import org.fisco.bcos.sdk.v3.client.protocol.model.TransactionAttribute;
 import org.fisco.bcos.sdk.v3.codec.datatypes.Address;
@@ -105,6 +107,7 @@ public class ContractWrapper {
 
     private boolean enableAsyncCall = false;
     private int transactionVersion = 0;
+    private Devdoc devdoc;
 
     public ContractWrapper(boolean isWasm) {
         this.isWasm = isWasm;
@@ -115,6 +118,7 @@ public class ContractWrapper {
             String bin,
             String smBin,
             String abi,
+            Devdoc devdoc,
             String destinationDir,
             String basePackageName,
             boolean enableAsyncCall,
@@ -122,6 +126,7 @@ public class ContractWrapper {
             throws IOException, ClassNotFoundException, UnsupportedOperationException {
         this.enableAsyncCall = enableAsyncCall;
         this.transactionVersion = transactionVersion;
+        this.devdoc = devdoc;
         String[] nameParts = contractName.split("_");
         for (int i = 0; i < nameParts.length; ++i) {
             nameParts[i] = StringUtils.capitaliseFirstLetter(nameParts[i]);
@@ -186,21 +191,28 @@ public class ContractWrapper {
 
     private TypeSpec.Builder createClassBuilder(
             String className, String binary, String smBinary, String abi) {
-        return TypeSpec.classBuilder(className)
-                .addModifiers(Modifier.PUBLIC)
-                .superclass(Contract.class)
-                .addAnnotation(
-                        AnnotationSpec.builder(SuppressWarnings.class)
-                                .addMember("value", "$S", "unchecked")
-                                .build())
-                // binary fields
-                .addField(this.createArrayDefinition(BINARY_ARRAY_NAME, binary))
-                .addField(this.createDefinition(BINARY_NAME, BINARY_ARRAY_NAME))
-                .addField(this.createArrayDefinition(SM_BINARY_ARRAY_NAME, smBinary))
-                .addField(this.createDefinition(SM_BINARY_NAME, SM_BINARY_ARRAY_NAME))
-                // abi fields
-                .addField(this.createArrayDefinition(ABI_ARRAY_NAME, abi))
-                .addField(this.createDefinition(ABI_NAME, ABI_ARRAY_NAME));
+        TypeSpec.Builder builder =
+                TypeSpec.classBuilder(className)
+                        .addModifiers(Modifier.PUBLIC)
+                        .superclass(Contract.class)
+                        .addAnnotation(
+                                AnnotationSpec.builder(SuppressWarnings.class)
+                                        .addMember("value", "$S", "unchecked")
+                                        .build())
+                        // binary fields
+                        .addField(this.createArrayDefinition(BINARY_ARRAY_NAME, binary))
+                        .addField(this.createDefinition(BINARY_NAME, BINARY_ARRAY_NAME))
+                        .addField(this.createArrayDefinition(SM_BINARY_ARRAY_NAME, smBinary))
+                        .addField(this.createDefinition(SM_BINARY_NAME, SM_BINARY_ARRAY_NAME))
+                        // abi fields
+                        .addField(this.createArrayDefinition(ABI_ARRAY_NAME, abi))
+                        .addField(this.createDefinition(ABI_NAME, ABI_ARRAY_NAME));
+
+        if (this.devdoc != null && !StringUtils.isEmpty(this.devdoc.getDetails())) {
+            builder.addJavadoc(this.devdoc.getDetails());
+        }
+
+        return builder;
     }
 
     public List<String> stringToArrayString(String binary) {
@@ -1217,6 +1229,23 @@ public class ContractWrapper {
             }
             this.buildTransactionFunction(functionDefinition, methodBuilder, inputParams);
         }
+
+        Devdoc.Method method = DocUtils.getMethod(devdoc, functionDefinition);
+        DocUtils.addMethodComments(method, methodBuilder);
+        DocUtils.addParamsComments(method, methodBuilder);
+        if (functionDefinition.isConstant()) {
+            DocUtils.addReturnsComments("@return", method, methodBuilder);
+        } else {
+            methodBuilder.addJavadoc(
+                    "@return TransactionReceipt Get more transaction info (e.g. txhash, block) from TransactionReceipt \n");
+            if (functionDefinition.getOutputs().size() > 0) {
+                methodBuilder.addJavadoc(
+                        "    use get$NOutput(transactionReceipt) to get outputs \n",
+                        StringUtils.capitaliseFirstLetter(functionDefinition.getName()));
+            }
+            DocUtils.addReturnsComments("    tuple", method, methodBuilder);
+        }
+
         return methodBuilder.build();
     }
 
@@ -1269,6 +1298,33 @@ public class ContractWrapper {
             methodBuilder.addParameter(TransactionCallback.class, "callback");
             this.buildTransactionFunctionWithCallback(
                     functionDefinition, methodBuilder, inputParams);
+        }
+
+        Devdoc.Method method = DocUtils.getMethod(devdoc, functionDefinition);
+        DocUtils.addMethodComments(method, methodBuilder);
+        DocUtils.addParamsComments(method, methodBuilder);
+        if (functionDefinition.isConstant()) {
+            // add comments for constant call callback
+            methodBuilder.addJavadoc(
+                    "@param callback Get method outputs from constant call callback onResponse(List<Type> types) \n");
+
+            // add comments for constant call callback outputs
+            DocUtils.addReturnsComments("    callback.onResponse(types)", method, methodBuilder);
+        } else {
+            // add comments for transaction call callback
+            methodBuilder.addJavadoc(
+                    "@param callback Get TransactionReceipt from TransactionCallback onResponse(TransactionReceipt receipt) \n");
+
+            if (functionDefinition.getOutputs().size() > 0) {
+                methodBuilder.addJavadoc(
+                        "    use get$NOutput(transactionReceipt) to get outputs \n",
+                        StringUtils.capitaliseFirstLetter(functionDefinition.getName()));
+            }
+
+            // add comments for how to get outputs in transaction call callback
+            DocUtils.addReturnsComments("    tuple", method, methodBuilder);
+            methodBuilder.addJavadoc(
+                    "@return txHash Transaction hash of current transaction call \n");
         }
 
         return methodBuilder.build();

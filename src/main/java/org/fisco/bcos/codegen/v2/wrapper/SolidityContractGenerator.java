@@ -17,6 +17,7 @@ import java.io.File;
 import java.io.IOException;
 import org.fisco.bcos.codegen.v2.exceptions.CodeGenException;
 import org.fisco.bcos.codegen.v2.utils.CodeGenUtils;
+import org.fisco.bcos.codegen.v2.utils.DocUtils;
 
 /** Java wrapper source code generator for Solidity ABI format. */
 public class SolidityContractGenerator {
@@ -46,6 +47,7 @@ public class SolidityContractGenerator {
     private final File binFile;
     private final File smBinFile;
     private final File abiFile;
+    private final File devdocFile;
     private final File destinationDir;
     private final String basePackageName;
 
@@ -53,11 +55,13 @@ public class SolidityContractGenerator {
             File binFile,
             File smBinFile,
             File abiFile,
+            File devdocFile,
             File destinationDir,
             String basePackageName) {
         this.binFile = binFile;
         this.smBinFile = smBinFile;
         this.abiFile = abiFile;
+        this.devdocFile = devdocFile;
         this.destinationDir = destinationDir;
         this.basePackageName = basePackageName;
     }
@@ -77,6 +81,7 @@ public class SolidityContractGenerator {
                         new String(binary),
                         new String(smBinary),
                         new String(abiBytes),
+                        DocUtils.convertDevDoc(devdocFile),
                         destinationDir.toString(),
                         basePackageName);
     }
