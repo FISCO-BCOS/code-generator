@@ -43,6 +43,8 @@ import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Modifier;
 import org.fisco.bcos.codegen.v2.exceptions.CodeGenException;
 import org.fisco.bcos.codegen.v2.utils.CodeGenUtils;
+import org.fisco.bcos.codegen.v2.utils.Devdoc;
+import org.fisco.bcos.codegen.v2.utils.DocUtils;
 import org.fisco.bcos.sdk.abi.FunctionEncoder;
 import org.fisco.bcos.sdk.abi.FunctionReturnDecoder;
 import org.fisco.bcos.sdk.abi.TypeReference;
@@ -109,15 +111,19 @@ public class SolidityContractWrapper {
     private static final HashMap<Integer, TypeName> structClassNameMap = new HashMap<>();
     private static final List<ABIDefinition.NamedType> structsNamedTypeList = new ArrayList<>();
 
+    private Devdoc devdoc;
+
     public void generateJavaFiles(
             String contractName,
             String bin,
             String smBin,
             String abi,
+            Devdoc devdoc,
             String destinationDir,
             String basePackageName)
             throws IOException, ClassNotFoundException, UnsupportedOperationException,
                     CodeGenException {
+        this.devdoc = devdoc;
         String className = StringUtils.capitaliseFirstLetter(contractName);
 
         logger.info("bin: {}", bin);
@@ -745,6 +751,22 @@ public class SolidityContractWrapper {
             buildTransactionFunction(functionDefinition, methodBuilder, inputParams);
         }
 
+        Devdoc.Method method = DocUtils.getMethod(devdoc, functionDefinition);
+        DocUtils.addMethodComments(method, methodBuilder);
+        DocUtils.addParamsComments(method, methodBuilder);
+        if (functionDefinition.isConstant()) {
+            DocUtils.addReturnsComments("@return", method, methodBuilder);
+        } else {
+            methodBuilder.addJavadoc(
+                    "@return TransactionReceipt Get more transaction info (e.g. txhash, block) from TransactionReceipt \n");
+            if (functionDefinition.getOutputs().size() > 0) {
+                methodBuilder.addJavadoc(
+                        "    use get$NOutput(transactionReceipt) to get outputs \n",
+                        StringUtils.capitaliseFirstLetter(functionDefinition.getName()));
+            }
+            DocUtils.addReturnsComments("    tuple", method, methodBuilder);
+        }
+
         return methodBuilder.build();
     }
 
@@ -784,6 +806,33 @@ public class SolidityContractWrapper {
             String inputParams = addParameters(methodBuilder, functionDefinition.getInputs());
             methodBuilder.addParameter(TransactionCallback.class, "callback");
             buildTransactionFunctionWithCallback(functionDefinition, methodBuilder, inputParams);
+        }
+
+        Devdoc.Method method = DocUtils.getMethod(devdoc, functionDefinition);
+        DocUtils.addMethodComments(method, methodBuilder);
+        DocUtils.addParamsComments(method, methodBuilder);
+        if (functionDefinition.isConstant()) {
+            // add comments for constant call callback
+            methodBuilder.addJavadoc(
+                    "@param callback Get method outputs from constant call callback onResponse(List<Type> types) \n");
+
+            // add comments for constant call callback outputs
+            DocUtils.addReturnsComments("    callback.onResponse(types)", method, methodBuilder);
+        } else {
+            // add comments for transaction call callback
+            methodBuilder.addJavadoc(
+                    "@param callback Get TransactionReceipt from TransactionCallback onResponse(TransactionReceipt receipt) \n");
+
+            if (functionDefinition.getOutputs().size() > 0) {
+                methodBuilder.addJavadoc(
+                        "    use get$NOutput(transactionReceipt) to get outputs \n",
+                        StringUtils.capitaliseFirstLetter(functionDefinition.getName()));
+            }
+
+            // add comments for how to get outputs in transaction call callback
+            DocUtils.addReturnsComments("    tuple", method, methodBuilder);
+            methodBuilder.addJavadoc(
+                    "@return txHash Transaction hash of current transaction call \n");
         }
 
         return methodBuilder.build();
