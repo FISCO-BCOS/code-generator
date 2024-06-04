@@ -910,9 +910,10 @@ public class SolidityContractWrapper {
                 List.class,
                 FunctionReturnDecoder.class);
 
-        buildTupleResultContainer0(
+        buildTupleResultContainer(
                 methodBuilder,
                 parameterizedTupleType,
+                inputTypes,
                 buildTypeNames(functionDefinition.getInputs()));
 
         return methodBuilder.build();
@@ -963,9 +964,10 @@ public class SolidityContractWrapper {
                 List.class,
                 FunctionReturnDecoder.class);
 
-        buildTupleResultContainer0(
+        buildTupleResultContainer(
                 methodBuilder,
                 parameterizedTupleType,
+                outputTypes,
                 buildTypeNames(functionDefinition.getOutputs()));
 
         return methodBuilder.build();
@@ -1070,7 +1072,15 @@ public class SolidityContractWrapper {
             buildVariableLengthReturnFunctionConstructor(
                     methodBuilder, functionName, inputParams, outputParameterTypes);
 
-            buildTupleResultContainer(methodBuilder, parameterizedTupleType, outputParameterTypes);
+            methodBuilder.addStatement(
+                    "$T results = executeCallWithMultipleValueReturn(function)",
+                    ParameterizedTypeName.get(
+                            List.class, org.fisco.bcos.sdk.abi.datatypes.Type.class));
+            buildTupleResultContainer(
+                    methodBuilder,
+                    parameterizedTupleType,
+                    functionDefinition.getOutputs(),
+                    outputParameterTypes);
         }
     }
 
@@ -1497,31 +1507,33 @@ public class SolidityContractWrapper {
     private void buildTupleResultContainer(
             MethodSpec.Builder methodBuilder,
             ParameterizedTypeName tupleType,
+            List<ABIDefinition.NamedType> namedTypes,
             List<TypeName> outputParameterTypes) {
 
         List<TypeName> typeArguments = tupleType.typeArguments;
 
-        CodeBlock.Builder tupleConstructor = CodeBlock.builder();
-        tupleConstructor
-                .addStatement(
-                        "$T results = executeCallWithMultipleValueReturn(function)",
-                        ParameterizedTypeName.get(List.class, Type.class))
-                .add("return new $T(", tupleType)
-                .add("$>$>");
+        CodeBlock.Builder codeBuilder = CodeBlock.builder();
 
         String resultStringSimple = "\n($T) results.get($L)";
-        resultStringSimple += ".getValue()";
+        String getValueString = ".getValue()";
 
         String resultStringNativeList = "\nconvertToNative(($T) results.get($L).getValue())";
+        String dynamicResultStringList =
+                "\nnew DynamicArray<>($T.class,($T) results.get($L).getValue())";
 
         int size = typeArguments.size();
         ClassName classList = ClassName.get(List.class);
+        ClassName dynamicArray = ClassName.get(org.fisco.bcos.sdk.abi.datatypes.DynamicArray.class);
+        ClassName staticArray = ClassName.get(org.fisco.bcos.sdk.abi.datatypes.StaticArray.class);
 
         for (int i = 0; i < size; i++) {
             TypeName param = outputParameterTypes.get(i);
             TypeName convertTo = typeArguments.get(i);
-
+            ABIDefinition.NamedType namedType = namedTypes.get(i);
             String resultString = resultStringSimple;
+            if (!namedType.getType().contains("tuple")) {
+                resultString += getValueString;
+            }
 
             // If we use native java types we need to convert
             // elements of arrays to native java types too
@@ -1534,50 +1546,15 @@ public class SolidityContractWrapper {
                             ParameterizedTypeName.get(classList, oldContainer.typeArguments.get(0));
                     resultString = resultStringNativeList;
                 }
-            }
-
-            tupleConstructor.add(resultString, convertTo, i);
-            tupleConstructor.add(i < size - 1 ? ", " : ");\n");
-        }
-        tupleConstructor.add("$<$<");
-        methodBuilder.returns(tupleType).addCode(tupleConstructor.build());
-    }
-
-    private void buildTupleResultContainer0(
-            MethodSpec.Builder methodBuilder,
-            ParameterizedTypeName tupleType,
-            List<TypeName> outputParameterTypes) {
-
-        List<TypeName> typeArguments = tupleType.typeArguments;
-
-        CodeBlock.Builder codeBuilder = CodeBlock.builder();
-
-        String resultStringSimple = "\n($T) results.get($L)";
-        String resultGetValue = ".getValue()";
-
-        String resultStringNativeList = "\nconvertToNative(($T) results.get($L).getValue())";
-
-        int size = typeArguments.size();
-        ClassName classList = ClassName.get(List.class);
-
-        for (int i = 0; i < size; i++) {
-            TypeName param = outputParameterTypes.get(i);
-            TypeName convertTo = typeArguments.get(i);
-
-            String resultString = resultStringSimple + resultGetValue;
-
-            // If we use native java types we need to convert
-            // elements of arrays to native java types too
-            if (param.equals(convertTo)) {
-                resultString = resultStringSimple;
-            } else if (param instanceof ParameterizedTypeName) {
-                ParameterizedTypeName oldContainer = (ParameterizedTypeName) param;
-                ParameterizedTypeName newContainer = (ParameterizedTypeName) convertTo;
-                if (newContainer.rawType.compareTo(classList) == 0
+                if ((newContainer.rawType.compareTo(dynamicArray) == 0
+                                || newContainer.rawType.compareTo(staticArray) == 0)
                         && newContainer.typeArguments.size() == 1) {
+                    resultString = dynamicResultStringList;
                     convertTo =
                             ParameterizedTypeName.get(classList, oldContainer.typeArguments.get(0));
-                    resultString = resultStringNativeList;
+                    codeBuilder.add(resultString, oldContainer.typeArguments.get(0), convertTo, i);
+                    codeBuilder.add(i < size - 1 ? ", " : "\n");
+                    continue;
                 }
             }
 
