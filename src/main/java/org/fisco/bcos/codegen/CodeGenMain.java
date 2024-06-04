@@ -147,6 +147,7 @@ public class CodeGenMain {
                                     packageName)
                             .generateJavaFiles();
                 } catch (Exception e) {
+                    e.printStackTrace();
                     org.fisco.bcos.codegen.v2.utils.CodeGenUtils.exitError(e);
                 }
             } else if (version.equals(Version.V3)) {

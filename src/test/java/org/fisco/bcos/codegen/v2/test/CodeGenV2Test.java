@@ -101,6 +101,13 @@ public class CodeGenV2Test {
     }
 
     @Test
+    public void RechargeTestCodeGen() throws IOException {
+        final String ABI_FILE = "IRechargeV2.abi";
+        final String CONTRACT_NAME = "IRechargeV2";
+        codeGenTest(ABI_FILE, CONTRACT_NAME);
+    }
+
+    @Test
     public void weidABICodeGen() throws IOException {
         final String ABI_FILE = "Weid.abi";
         final String CONTRACT_NAME = "Weid";
