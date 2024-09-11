@@ -2124,6 +2124,7 @@ public class ContractWrapper {
         } else {
             builder.addStatement("$L.log = eventValues.getLog()", objectName);
         }
+        // indexed
         for (int i = 0; i < indexedParameters.size(); i++) {
             final NamedTypeName namedTypeName = indexedParameters.get(i);
             String nativeConversion;
@@ -2153,6 +2154,7 @@ public class ContractWrapper {
                     i);
         }
 
+        // non-indexed
         for (int i = 0; i < nonIndexedParameters.size(); i++) {
             final NamedTypeName namedTypeName = nonIndexedParameters.get(i);
             String result = "$L.$L = ($T) eventValues.getNonIndexedValues().get($L)";

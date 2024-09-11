@@ -174,6 +174,13 @@ public class CodeGenV3Test {
     }
 
     @Test
+    public void ListEventTestCodeGen() throws IOException {
+        final String ABI_FILE = "ListEventTest.abi";
+        final String CONTRACT_NAME = "ListEventTest";
+        codeGenTest(ABI_FILE, CONTRACT_NAME);
+    }
+
+    @Test
     public void docTestCodeGen() throws IOException {
         final String CONTRACT_NAME = "ERC721";
         codeGenDocTest(CONTRACT_NAME);
