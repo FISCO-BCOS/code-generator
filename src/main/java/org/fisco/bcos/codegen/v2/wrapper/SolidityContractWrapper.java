@@ -43,6 +43,8 @@ import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Modifier;
 import org.fisco.bcos.codegen.v2.exceptions.CodeGenException;
 import org.fisco.bcos.codegen.v2.utils.CodeGenUtils;
+import org.fisco.bcos.codegen.v2.utils.Devdoc;
+import org.fisco.bcos.codegen.v2.utils.DocUtils;
 import org.fisco.bcos.sdk.abi.FunctionEncoder;
 import org.fisco.bcos.sdk.abi.FunctionReturnDecoder;
 import org.fisco.bcos.sdk.abi.TypeReference;
@@ -109,15 +111,19 @@ public class SolidityContractWrapper {
     private static final HashMap<Integer, TypeName> structClassNameMap = new HashMap<>();
     private static final List<ABIDefinition.NamedType> structsNamedTypeList = new ArrayList<>();
 
+    private Devdoc devdoc;
+
     public void generateJavaFiles(
             String contractName,
             String bin,
             String smBin,
             String abi,
+            Devdoc devdoc,
             String destinationDir,
             String basePackageName)
             throws IOException, ClassNotFoundException, UnsupportedOperationException,
                     CodeGenException {
+        this.devdoc = devdoc;
         String className = StringUtils.capitaliseFirstLetter(contractName);
 
         logger.info("bin: {}", bin);
@@ -745,6 +751,22 @@ public class SolidityContractWrapper {
             buildTransactionFunction(functionDefinition, methodBuilder, inputParams);
         }
 
+        Devdoc.Method method = DocUtils.getMethod(devdoc, functionDefinition);
+        DocUtils.addMethodComments(method, methodBuilder);
+        DocUtils.addParamsComments(method, methodBuilder);
+        if (functionDefinition.isConstant()) {
+            DocUtils.addReturnsComments("@return", method, methodBuilder);
+        } else {
+            methodBuilder.addJavadoc(
+                    "@return TransactionReceipt Get more transaction info (e.g. txhash, block) from TransactionReceipt \n");
+            if (functionDefinition.getOutputs().size() > 0) {
+                methodBuilder.addJavadoc(
+                        "    use get$NOutput(transactionReceipt) to get outputs \n",
+                        StringUtils.capitaliseFirstLetter(functionDefinition.getName()));
+            }
+            DocUtils.addReturnsComments("    tuple", method, methodBuilder);
+        }
+
         return methodBuilder.build();
     }
 
@@ -784,6 +806,33 @@ public class SolidityContractWrapper {
             String inputParams = addParameters(methodBuilder, functionDefinition.getInputs());
             methodBuilder.addParameter(TransactionCallback.class, "callback");
             buildTransactionFunctionWithCallback(functionDefinition, methodBuilder, inputParams);
+        }
+
+        Devdoc.Method method = DocUtils.getMethod(devdoc, functionDefinition);
+        DocUtils.addMethodComments(method, methodBuilder);
+        DocUtils.addParamsComments(method, methodBuilder);
+        if (functionDefinition.isConstant()) {
+            // add comments for constant call callback
+            methodBuilder.addJavadoc(
+                    "@param callback Get method outputs from constant call callback onResponse(List<Type> types) \n");
+
+            // add comments for constant call callback outputs
+            DocUtils.addReturnsComments("    callback.onResponse(types)", method, methodBuilder);
+        } else {
+            // add comments for transaction call callback
+            methodBuilder.addJavadoc(
+                    "@param callback Get TransactionReceipt from TransactionCallback onResponse(TransactionReceipt receipt) \n");
+
+            if (functionDefinition.getOutputs().size() > 0) {
+                methodBuilder.addJavadoc(
+                        "    use get$NOutput(transactionReceipt) to get outputs \n",
+                        StringUtils.capitaliseFirstLetter(functionDefinition.getName()));
+            }
+
+            // add comments for how to get outputs in transaction call callback
+            DocUtils.addReturnsComments("    tuple", method, methodBuilder);
+            methodBuilder.addJavadoc(
+                    "@return txHash Transaction hash of current transaction call \n");
         }
 
         return methodBuilder.build();
@@ -861,9 +910,10 @@ public class SolidityContractWrapper {
                 List.class,
                 FunctionReturnDecoder.class);
 
-        buildTupleResultContainer0(
+        buildTupleResultContainer(
                 methodBuilder,
                 parameterizedTupleType,
+                inputTypes,
                 buildTypeNames(functionDefinition.getInputs()));
 
         return methodBuilder.build();
@@ -914,9 +964,10 @@ public class SolidityContractWrapper {
                 List.class,
                 FunctionReturnDecoder.class);
 
-        buildTupleResultContainer0(
+        buildTupleResultContainer(
                 methodBuilder,
                 parameterizedTupleType,
+                outputTypes,
                 buildTypeNames(functionDefinition.getOutputs()));
 
         return methodBuilder.build();
@@ -1021,7 +1072,15 @@ public class SolidityContractWrapper {
             buildVariableLengthReturnFunctionConstructor(
                     methodBuilder, functionName, inputParams, outputParameterTypes);
 
-            buildTupleResultContainer(methodBuilder, parameterizedTupleType, outputParameterTypes);
+            methodBuilder.addStatement(
+                    "$T results = executeCallWithMultipleValueReturn(function)",
+                    ParameterizedTypeName.get(
+                            List.class, org.fisco.bcos.sdk.abi.datatypes.Type.class));
+            buildTupleResultContainer(
+                    methodBuilder,
+                    parameterizedTupleType,
+                    functionDefinition.getOutputs(),
+                    outputParameterTypes);
         }
     }
 
@@ -1448,31 +1507,33 @@ public class SolidityContractWrapper {
     private void buildTupleResultContainer(
             MethodSpec.Builder methodBuilder,
             ParameterizedTypeName tupleType,
+            List<ABIDefinition.NamedType> namedTypes,
             List<TypeName> outputParameterTypes) {
 
         List<TypeName> typeArguments = tupleType.typeArguments;
 
-        CodeBlock.Builder tupleConstructor = CodeBlock.builder();
-        tupleConstructor
-                .addStatement(
-                        "$T results = executeCallWithMultipleValueReturn(function)",
-                        ParameterizedTypeName.get(List.class, Type.class))
-                .add("return new $T(", tupleType)
-                .add("$>$>");
+        CodeBlock.Builder codeBuilder = CodeBlock.builder();
 
         String resultStringSimple = "\n($T) results.get($L)";
-        resultStringSimple += ".getValue()";
+        String getValueString = ".getValue()";
 
         String resultStringNativeList = "\nconvertToNative(($T) results.get($L).getValue())";
+        String dynamicResultStringList =
+                "\nnew DynamicArray<>($T.class,($T) results.get($L).getValue())";
 
         int size = typeArguments.size();
         ClassName classList = ClassName.get(List.class);
+        ClassName dynamicArray = ClassName.get(org.fisco.bcos.sdk.abi.datatypes.DynamicArray.class);
+        ClassName staticArray = ClassName.get(org.fisco.bcos.sdk.abi.datatypes.StaticArray.class);
 
         for (int i = 0; i < size; i++) {
             TypeName param = outputParameterTypes.get(i);
             TypeName convertTo = typeArguments.get(i);
-
+            ABIDefinition.NamedType namedType = namedTypes.get(i);
             String resultString = resultStringSimple;
+            if (!namedType.getType().contains("tuple")) {
+                resultString += getValueString;
+            }
 
             // If we use native java types we need to convert
             // elements of arrays to native java types too
@@ -1485,50 +1546,15 @@ public class SolidityContractWrapper {
                             ParameterizedTypeName.get(classList, oldContainer.typeArguments.get(0));
                     resultString = resultStringNativeList;
                 }
-            }
-
-            tupleConstructor.add(resultString, convertTo, i);
-            tupleConstructor.add(i < size - 1 ? ", " : ");\n");
-        }
-        tupleConstructor.add("$<$<");
-        methodBuilder.returns(tupleType).addCode(tupleConstructor.build());
-    }
-
-    private void buildTupleResultContainer0(
-            MethodSpec.Builder methodBuilder,
-            ParameterizedTypeName tupleType,
-            List<TypeName> outputParameterTypes) {
-
-        List<TypeName> typeArguments = tupleType.typeArguments;
-
-        CodeBlock.Builder codeBuilder = CodeBlock.builder();
-
-        String resultStringSimple = "\n($T) results.get($L)";
-        String resultGetValue = ".getValue()";
-
-        String resultStringNativeList = "\nconvertToNative(($T) results.get($L).getValue())";
-
-        int size = typeArguments.size();
-        ClassName classList = ClassName.get(List.class);
-
-        for (int i = 0; i < size; i++) {
-            TypeName param = outputParameterTypes.get(i);
-            TypeName convertTo = typeArguments.get(i);
-
-            String resultString = resultStringSimple + resultGetValue;
-
-            // If we use native java types we need to convert
-            // elements of arrays to native java types too
-            if (param.equals(convertTo)) {
-                resultString = resultStringSimple;
-            } else if (param instanceof ParameterizedTypeName) {
-                ParameterizedTypeName oldContainer = (ParameterizedTypeName) param;
-                ParameterizedTypeName newContainer = (ParameterizedTypeName) convertTo;
-                if (newContainer.rawType.compareTo(classList) == 0
+                if ((newContainer.rawType.compareTo(dynamicArray) == 0
+                                || newContainer.rawType.compareTo(staticArray) == 0)
                         && newContainer.typeArguments.size() == 1) {
+                    resultString = dynamicResultStringList;
                     convertTo =
                             ParameterizedTypeName.get(classList, oldContainer.typeArguments.get(0));
-                    resultString = resultStringNativeList;
+                    codeBuilder.add(resultString, oldContainer.typeArguments.get(0), convertTo, i);
+                    codeBuilder.add(i < size - 1 ? ", " : "\n");
+                    continue;
                 }
             }
 

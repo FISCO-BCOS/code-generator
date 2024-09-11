@@ -24,15 +24,15 @@ ext {
         ossrhPassword = "xxx"
     }
     // jackson version
-    jacksonVersion = '2.14.1'
+    jacksonVersion = '2.17.0'
     javapoetVersion = '1.13.0'
-    picocliVersion = '4.6.1'
+    picocliVersion = '4.7.6'
     junitVersion = '4.13.2'
-    commonsLang3Version = '3.12.0'
+    commonsLang3Version = '3.14.0'
 
-    javaSDKVersion3 = "3.7.0"
+    javaSDKVersion3 = "3.8.0"
     javaSDKVersion2 = "2.10.0"
-    slf4jVersion = "1.7.32"
+    slf4jVersion = "1.7.36"
 }
 
 sourceSets {
@@ -54,7 +54,7 @@ configurations.all {
 // integrationTest.mustRunAfter test
 allprojects {
     group = 'org.fisco-bcos.code-generator'
-    version = '1.5.0'
+    version = '1.6.0'
     apply plugin: 'maven-publish'
     apply plugin: 'idea'
     apply plugin: 'eclipse'
@@ -86,7 +86,7 @@ allprojects {
         api("org.slf4j:slf4j-api:${slf4jVersion}")
         api("org.apache.commons:commons-lang3:${commonsLang3Version}")
         testImplementation("junit:junit:${junitVersion}")
-        testImplementation("org.mockito:mockito-core:4.6.0")
+        testImplementation('org.mockito:mockito-core:5.11.0')
     }
 
     clean.doLast {

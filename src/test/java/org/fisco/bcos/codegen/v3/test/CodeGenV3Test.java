@@ -166,6 +166,26 @@ public class CodeGenV3Test {
         codeGenTest(ABI_FILE, CONTRACT_NAME);
     }
 
+    @Test
+    public void RechargeTestCodeGen() throws IOException {
+        final String ABI_FILE = "IRechargeV2.abi";
+        final String CONTRACT_NAME = "IRechargeV2";
+        codeGenTest(ABI_FILE, CONTRACT_NAME);
+    }
+
+    @Test
+    public void ListEventTestCodeGen() throws IOException {
+        final String ABI_FILE = "ListEventTest.abi";
+        final String CONTRACT_NAME = "ListEventTest";
+        codeGenTest(ABI_FILE, CONTRACT_NAME);
+    }
+
+    @Test
+    public void docTestCodeGen() throws IOException {
+        final String CONTRACT_NAME = "ERC721";
+        codeGenDocTest(CONTRACT_NAME);
+    }
+
     private void codeGenTest(String abiFileName, String contractName) throws IOException {
         codeGenTest(abiFileName, abiFileName, contractName);
     }
@@ -186,6 +206,74 @@ public class CodeGenV3Test {
                                 binFile,
                                 "-s",
                                 binFile,
+                                "-p",
+                                DEFAULT_PACKAGE,
+                                "-o",
+                                javaOutPut,
+                                "-e"));
+
+        args.add("-t");
+        args.add(txVersion);
+        CodeGenMain.main(args.toArray(new String[0]));
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        DiagnosticCollector<JavaFileObject> collector = new DiagnosticCollector<>();
+        JavaFileManager javaFileManager =
+                compiler.getStandardFileManager(collector, null, StandardCharsets.UTF_8);
+        String codeFileName =
+                javaOutPut
+                        + File.separator
+                        + File.separator
+                        + DEFAULT_PACKAGE
+                        + File.separator
+                        + contractName
+                        + ".java";
+
+        File codeFile = new File(codeFileName);
+        Long fileLength = codeFile.length();
+        byte[] fileContent = new byte[fileLength.intValue()];
+        FileInputStream in = new FileInputStream(codeFile);
+        in.read(fileContent);
+        in.close();
+        String code = new String(fileContent, StandardCharsets.UTF_8);
+
+        JavaFileObject myJavaFileObject = new MyJavaFileObject(contractName, code);
+        Boolean call =
+                compiler.getTask(
+                                null,
+                                javaFileManager,
+                                collector,
+                                null,
+                                null,
+                                Collections.singletonList(myJavaFileObject))
+                        .call();
+        collector.getDiagnostics().forEach(log -> System.out.println(log.toString()));
+        Assert.assertTrue(call);
+    }
+
+    private void codeGenDocTest(String contractName) throws IOException {
+        String abiFile =
+                CodeGenV3Test.class.getClassLoader().getResource(contractName + ".abi").getPath();
+        String binFile =
+                CodeGenV3Test.class.getClassLoader().getResource(contractName + ".abi").getPath();
+        String docFile =
+                CodeGenV3Test.class
+                        .getClassLoader()
+                        .getResource(contractName + ".devdoc")
+                        .getPath();
+        String javaOutPut = new File(abiFile).getParent() + File.separator + JAVA_OUTPUT_DIR;
+        ArrayList<String> args =
+                new ArrayList<>(
+                        Arrays.asList(
+                                "-v",
+                                "V3",
+                                "-a",
+                                abiFile,
+                                "-b",
+                                binFile,
+                                "-s",
+                                binFile,
+                                "-d",
+                                docFile,
                                 "-p",
                                 DEFAULT_PACKAGE,
                                 "-o",
