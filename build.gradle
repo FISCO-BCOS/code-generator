@@ -142,7 +142,7 @@ publishing {
             pom {
                 name = 'fisco-bcos'
                 description = 'fisco-bcos ABI code generator.'
-                url = 'http://www.fisco-bcos.org'
+                url = 'https://github.com/FISCO-BCOS'
 
                 licenses {
                     license {
